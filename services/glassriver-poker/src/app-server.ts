@@ -20,6 +20,13 @@ export interface PlatformServices {
   sessions: SessionService;
 }
 
+export interface PlatformServerOptions {
+  gateway?: {
+    path?: string;
+    disconnectGraceMs?: number;
+  };
+}
+
 export function buildDefaultServices(): PlatformServices {
   const poker = new PokerService();
   const wallet = new WalletService();
@@ -48,7 +55,7 @@ export function buildDefaultServices(): PlatformServices {
   return { poker, wallet, payment, compliance, users, analytics, sessions };
 }
 
-export function createPlatformServer(services: PlatformServices) {
+export function createPlatformServer(services: PlatformServices, options: PlatformServerOptions = {}) {
   const server = createServer(async (req, res) => {
     try {
       await routeRequest(req, res, services);
@@ -57,7 +64,7 @@ export function createPlatformServer(services: PlatformServices) {
     }
   });
 
-  attachRealtimeGateway({
+  const gateway = attachRealtimeGateway({
     server,
     services: {
       poker: services.poker,
@@ -65,6 +72,8 @@ export function createPlatformServer(services: PlatformServices) {
       analytics: services.analytics,
       sessions: services.sessions,
     },
+    path: options.gateway?.path,
+    disconnectGraceMs: options.gateway?.disconnectGraceMs,
   });
 
   return {
@@ -79,6 +88,7 @@ export function createPlatformServer(services: PlatformServices) {
       });
     },
     async stop(): Promise<void> {
+      await gateway.close();
       await new Promise<void>((resolve, reject) => {
         server.close((err) => {
           if (err) {

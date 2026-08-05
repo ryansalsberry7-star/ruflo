@@ -13,6 +13,13 @@ interface ClientSession {
   tableId: string | null;
 }
 
+interface PendingDisconnect {
+  timeout: ReturnType<typeof setTimeout>;
+  reconnectToken: string;
+  userId: string;
+  tableId: string;
+}
+
 interface GatewayServices {
   poker: PokerService;
   wallet: WalletService;
@@ -24,14 +31,16 @@ interface GatewayOptions {
   server: HttpServer;
   services: GatewayServices;
   path?: string;
+  disconnectGraceMs?: number;
 }
 
 export function attachRealtimeGateway(options: GatewayOptions) {
-  const { server, services, path = '/ws' } = options;
+  const { server, services, path = '/ws', disconnectGraceMs = 15_000 } = options;
   const wss = new WebSocketServer({ noServer: true });
   const clients = new Map<WebSocket, ClientSession>();
+  const pendingDisconnects = new Map<string, PendingDisconnect>();
 
-  server.on('upgrade', (request, socket, head) => {
+  const onUpgrade = (request: IncomingMessage, socket: import('node:net').Socket, head: Buffer) => {
     if (!isUpgradePathMatch(request, path)) {
       socket.destroy();
       return;
@@ -40,7 +49,9 @@ export function attachRealtimeGateway(options: GatewayOptions) {
     wss.handleUpgrade(request, socket, head, (websocket) => {
       wss.emit('connection', websocket, request);
     });
-  });
+  };
+
+  server.on('upgrade', onUpgrade);
 
   wss.on('connection', (socket) => {
     clients.set(socket, { socket, userId: 'guest', tableId: null });
@@ -65,6 +76,7 @@ export function attachRealtimeGateway(options: GatewayOptions) {
           const reconnectToken = typeof message.payload?.reconnectToken === 'string' ? message.payload.reconnectToken : null;
           if (reconnectToken) {
             const recovered = services.sessions.consumeReconnectToken(reconnectToken);
+            clearPendingDisconnect(pendingDisconnects, makePresenceKey(recovered.userId, recovered.tableId));
             clients.set(socket, { ...session, userId: recovered.userId, tableId: recovered.tableId });
             socket.send(
               JSON.stringify({
@@ -80,7 +92,11 @@ export function attachRealtimeGateway(options: GatewayOptions) {
 
           const userId = String(message.payload?.userId ?? 'guest');
           const tableId = typeof message.payload?.tableId === 'string' ? message.payload.tableId : null;
-          clients.set(socket, { ...session, userId });
+          if (tableId) {
+            clearPendingDisconnect(pendingDisconnects, makePresenceKey(userId, tableId));
+          }
+
+          clients.set(socket, { ...session, userId, tableId });
           services.wallet.ensureWallet(userId);
           const reconnect = tableId
             ? services.sessions.issueReconnectToken(userId, tableId)
@@ -144,11 +160,76 @@ export function attachRealtimeGateway(options: GatewayOptions) {
     });
 
     socket.on('close', () => {
+      const session = clients.get(socket);
       clients.delete(socket);
+
+      if (!session || session.userId === 'guest' || !session.tableId) return;
+      const reconnect = services.sessions.issueReconnectToken(session.userId, session.tableId);
+      const presenceKey = makePresenceKey(session.userId, session.tableId);
+      clearPendingDisconnect(pendingDisconnects, presenceKey);
+
+      const timeout = setTimeout(() => {
+        pendingDisconnects.delete(presenceKey);
+        const table = services.poker.applyPlayerAction(session.tableId as string, session.userId, 'fold', 0);
+        broadcastTable(clients, session.tableId as string, {
+          event: 'player_timed_out',
+          payload: { userId: session.userId, tableId: session.tableId },
+        });
+        broadcastTable(clients, session.tableId as string, { event: 'table_update', payload: { table } });
+      }, disconnectGraceMs);
+
+      pendingDisconnects.set(presenceKey, {
+        timeout,
+        reconnectToken: reconnect.token,
+        userId: session.userId,
+        tableId: session.tableId,
+      });
+
+      broadcastTable(clients, session.tableId, {
+        event: 'player_disconnected',
+        payload: {
+          userId: session.userId,
+          tableId: session.tableId,
+          reconnectToken: reconnect.token,
+          reconnectTokenExpiresAt: reconnect.expiresAt,
+          graceMs: disconnectGraceMs,
+        },
+      });
     });
   });
 
-  return { wss };
+  return {
+    wss,
+    close: async () => {
+      server.off('upgrade', onUpgrade);
+      for (const pending of pendingDisconnects.values()) {
+        clearTimeout(pending.timeout);
+      }
+      pendingDisconnects.clear();
+
+      for (const session of clients.values()) {
+        if (session.socket.readyState === session.socket.OPEN) {
+          session.socket.close();
+        }
+      }
+      clients.clear();
+
+      await new Promise<void>((resolve) => {
+        wss.close(() => resolve());
+      });
+    },
+  };
+}
+
+function makePresenceKey(userId: string, tableId: string): string {
+  return `${tableId}:${userId}`;
+}
+
+function clearPendingDisconnect(pendingDisconnects: Map<string, PendingDisconnect>, key: string): void {
+  const pending = pendingDisconnects.get(key);
+  if (!pending) return;
+  clearTimeout(pending.timeout);
+  pendingDisconnects.delete(key);
 }
 
 function isUpgradePathMatch(request: IncomingMessage, path: string): boolean {
