@@ -1,9 +1,11 @@
-import { createServer } from 'node:http';
+import type { IncomingMessage } from 'node:http';
+import type { Server as HttpServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { actionEnvelopeSchema } from '../contracts.js';
 import { PokerService } from '../services/poker-service.js';
 import { WalletService } from '../services/wallet-service.js';
 import { AnalyticsService } from '../services/analytics-service.js';
+import { SessionService } from '../services/session-service.js';
 
 interface ClientSession {
   socket: WebSocket;
@@ -15,12 +17,30 @@ interface GatewayServices {
   poker: PokerService;
   wallet: WalletService;
   analytics: AnalyticsService;
+  sessions: SessionService;
 }
 
-export function startGateway(services: GatewayServices, port = 4040) {
-  const server = createServer();
-  const wss = new WebSocketServer({ server });
+interface GatewayOptions {
+  server: HttpServer;
+  services: GatewayServices;
+  path?: string;
+}
+
+export function attachRealtimeGateway(options: GatewayOptions) {
+  const { server, services, path = '/ws' } = options;
+  const wss = new WebSocketServer({ noServer: true });
   const clients = new Map<WebSocket, ClientSession>();
+
+  server.on('upgrade', (request, socket, head) => {
+    if (!isUpgradePathMatch(request, path)) {
+      socket.destroy();
+      return;
+    }
+
+    wss.handleUpgrade(request, socket, head, (websocket) => {
+      wss.emit('connection', websocket, request);
+    });
+  });
 
   wss.on('connection', (socket) => {
     clients.set(socket, { socket, userId: 'guest', tableId: null });
@@ -42,10 +62,39 @@ export function startGateway(services: GatewayServices, port = 4040) {
         if (!session) return;
 
         if (message.event === 'auth') {
+          const reconnectToken = typeof message.payload?.reconnectToken === 'string' ? message.payload.reconnectToken : null;
+          if (reconnectToken) {
+            const recovered = services.sessions.consumeReconnectToken(reconnectToken);
+            clients.set(socket, { ...session, userId: recovered.userId, tableId: recovered.tableId });
+            socket.send(
+              JSON.stringify({
+                event: 'reconnect_ok',
+                payload: {
+                  userId: recovered.userId,
+                  tableId: recovered.tableId,
+                },
+              })
+            );
+            return;
+          }
+
           const userId = String(message.payload?.userId ?? 'guest');
+          const tableId = typeof message.payload?.tableId === 'string' ? message.payload.tableId : null;
           clients.set(socket, { ...session, userId });
           services.wallet.ensureWallet(userId);
-          socket.send(JSON.stringify({ event: 'auth_ok', payload: { userId } }));
+          const reconnect = tableId
+            ? services.sessions.issueReconnectToken(userId, tableId)
+            : null;
+          socket.send(
+            JSON.stringify({
+              event: 'auth_ok',
+              payload: {
+                userId,
+                reconnectToken: reconnect?.token ?? null,
+                reconnectTokenExpiresAt: reconnect?.expiresAt ?? null,
+              },
+            })
+          );
           return;
         }
 
@@ -99,8 +148,13 @@ export function startGateway(services: GatewayServices, port = 4040) {
     });
   });
 
-  server.listen(port);
-  return { server, wss };
+  return { wss };
+}
+
+function isUpgradePathMatch(request: IncomingMessage, path: string): boolean {
+  const incomingUrl = request.url ?? '';
+  const pathname = incomingUrl.split('?')[0] ?? '';
+  return pathname === path;
 }
 
 function broadcastTable(

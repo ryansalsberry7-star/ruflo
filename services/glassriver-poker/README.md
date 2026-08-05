@@ -31,6 +31,20 @@ npm start
 
 The server boots with a seeded table and exposes a WebSocket endpoint at `ws://localhost:4040`.
 
+### Phase 2 API Endpoints
+
+- `GET /api/health`
+- `GET /api/lobby/cash-games`
+- `GET /api/lobby/tournaments`
+- `POST /api/tables/:tableId/join`
+- `POST /api/tables/:tableId/action`
+- `GET /api/tables/:tableId/hand-history`
+- `GET /api/wallet/:userId`
+- `POST /api/sessions/token`
+- `POST /api/sessions/reconnect`
+
+Realtime gameplay is available at `ws://localhost:4040/ws` with server-authoritative action handling and reconnect token recovery.
+
 ## Validation
 
 Run:

@@ -38,6 +38,7 @@ export interface TableListing {
 export class PokerService {
   private readonly tables = new Map<string, TableState>();
   private readonly handHistory = new Map<string, SettledHand[]>();
+  private readonly tablePrivacy = new Map<string, boolean>();
 
   createCashTable(tableId: string, stakeId: string, players: Array<{ id: string; name: string; stack: number }>, isPrivate = false): TableState {
     const stake = STAKE_LEVELS.find((entry) => entry.id === stakeId);
@@ -51,8 +52,33 @@ export class PokerService {
     });
 
     this.tables.set(tableId, table);
+    this.tablePrivacy.set(tableId, isPrivate);
     this.getOrCreateListing(tableId, stake, isPrivate);
     return table;
+  }
+
+  joinTable(tableId: string, player: { id: string; name: string; stack: number }): TableState {
+    const table = this.getTable(tableId);
+    const existing = table.players.find((entry) => entry.id === player.id);
+    if (existing) return table;
+
+    const next: TableState = {
+      ...table,
+      players: [
+        ...table.players,
+        {
+          ...player,
+          folded: false,
+          allIn: false,
+          isDealer: false,
+          isSmallBlind: false,
+          isBigBlind: false,
+        },
+      ],
+    };
+
+    this.tables.set(tableId, next);
+    return next;
   }
 
   getTable(tableId: string): TableState {
@@ -70,7 +96,7 @@ export class PokerService {
         stake,
         playersSeated: table.players.length,
         speed: stake.speed,
-        isPrivate: false,
+        isPrivate: this.tablePrivacy.get(table.id) ?? false,
       } satisfies TableListing;
     });
 
