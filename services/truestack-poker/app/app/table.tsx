@@ -178,10 +178,17 @@ function SeatPod({ player, isHero, isTurn, onSit, seated, characterId, verifiedH
           pressed && seatStyles.pressedPod,
         ]}
       >
-        <View style={[seatStyles.emptyAvatar, !seated && !isHero && seatStyles.openAvatar]}>
-          <Text style={seatStyles.emptyPlus}>+</Text>
+        <View style={seatStyles.cardsRow}>
+          <View style={[seatStyles.holeBack, seatStyles.holeBackTiltLeft]} />
+          <View style={[seatStyles.holeBack, seatStyles.holeBackTiltRight]} />
         </View>
-        <Text style={[seatStyles.emptyLabel, !seated && !isHero && seatStyles.openLabel]}>{label}</Text>
+        <View style={[seatStyles.chairBack, seatStyles.emptyChairBack, !seated && !isHero && seatStyles.openChairBack]}>
+          <View style={[seatStyles.emptyAvatar, !seated && !isHero && seatStyles.openAvatar]}>
+            <Text style={seatStyles.emptyPlus}>+</Text>
+          </View>
+          <Text style={[seatStyles.emptyLabel, !seated && !isHero && seatStyles.openLabel]}>{label}</Text>
+        </View>
+        <View style={[seatStyles.chairSeat, !seated && !isHero && seatStyles.openChairSeat]} />
       </Pressable>
     );
   }
@@ -199,33 +206,36 @@ function SeatPod({ player, isHero, isTurn, onSit, seated, characterId, verifiedH
       <View style={seatStyles.cardsRow}>
         {!player.folded ? (
           <>
-            <View style={seatStyles.holeBack} />
-            <View style={seatStyles.holeBack} />
+            <View style={[seatStyles.holeBack, seatStyles.holeBackTiltLeft]} />
+            <View style={[seatStyles.holeBack, seatStyles.holeBackTiltRight]} />
           </>
         ) : null}
       </View>
-      <View style={[seatStyles.avatar, { backgroundColor: character.aura, borderColor: character.accent }]}>
-        <Text style={seatStyles.avatarEmoji}>{character.emoji}</Text>
-        {verifiedHuman ? (
-          <View style={seatStyles.trustShield}>
-            <Text style={seatStyles.trustShieldText}>H</Text>
-          </View>
-        ) : null}
+      <View style={[seatStyles.chairBack, isHero && seatStyles.heroChairBack]}>
+        <View style={[seatStyles.avatar, { backgroundColor: character.aura, borderColor: character.accent }]}>
+          <Text style={seatStyles.avatarEmoji}>{character.emoji}</Text>
+          {verifiedHuman ? (
+            <View style={seatStyles.trustShield}>
+              <Text style={seatStyles.trustShieldText}>H</Text>
+            </View>
+          ) : null}
+        </View>
         {player.isDealer ? (
           <View style={seatStyles.dealerButton}>
             <Text style={seatStyles.dealerButtonText}>D</Text>
           </View>
         ) : null}
+        <View style={[seatStyles.nameTag, { borderColor: isHero ? '#F1C46E' : character.accent }]}>
+          <Text style={seatStyles.name} numberOfLines={1}>
+            {isHero ? 'You' : player.name}
+          </Text>
+        </View>
+        <View style={seatStyles.stackRow}>
+          <ChipStack />
+          <Text style={seatStyles.stack}>${player.stack.toFixed(0)}</Text>
+        </View>
       </View>
-      <View style={[seatStyles.nameTag, { borderColor: isHero ? '#F1C46E' : character.accent }]}>
-        <Text style={seatStyles.name} numberOfLines={1}>
-          {isHero ? 'You' : player.name}
-        </Text>
-      </View>
-      <View style={seatStyles.stackRow}>
-        <ChipStack />
-        <Text style={seatStyles.stack}>${player.stack.toFixed(0)}</Text>
-      </View>
+      <View style={seatStyles.chairSeat} />
       <Text style={[seatStyles.status, isTurn && seatStyles.statusActive]}>{status}</Text>
     </View>
   );
@@ -425,6 +435,17 @@ export default function TableScreen() {
 
   const mySeat = table?.players.find((player) => player.id === user?.userId) ?? null;
   const communityCards = table?.communityCards.map((card) => card.id.toUpperCase()) ?? [];
+  const verifiedSeatCount = Object.values(playerTrust).filter((trust) => trust.verifiedHuman).length;
+  const boardSummary =
+    communityCards.length > 0 ? `${communityCards.length} board card${communityCards.length === 1 ? '' : 's'} exposed` : 'Deck set for next hand';
+  const dealerSkinLabel =
+    preferences.dealerSkinId === 'classic-casino-dealer'
+      ? 'Classic Casino'
+      : preferences.dealerSkinId === 'luxury-tournament-dealer'
+        ? 'Tournament'
+        : preferences.dealerSkinId === 'modern-professional-dealer'
+          ? 'Professional'
+          : 'VIP';
 
   async function handleSit(index: number): Promise<void> {
     if (mySeat) {
@@ -496,7 +517,7 @@ export default function TableScreen() {
       <View style={styles.headerRow}>
         <Text style={styles.eyebrow}>PLAY-MONEY BETA • AUTHENTICATED TABLE</Text>
         <Text style={styles.title}>Aurora Table • $0.05/$0.10</Text>
-        <Text style={styles.subtitle}>A brass-and-felt table view with chosen characters, trust markers, and server-authenticated seat presence.</Text>
+        <Text style={styles.subtitle}>A classic terrace-room table with polished rail chrome, personalized seats, and human-verification markers built right into the lineup.</Text>
       </View>
 
       <View style={styles.heroBanner}>
@@ -516,8 +537,10 @@ export default function TableScreen() {
       </View>
 
       <View style={styles.tableStrip}>
-        <View style={[styles.liveDot, connected && styles.liveDotOn]} />
-        <Text style={styles.stripText}>{connected ? 'LIVE' : 'CONNECTING'}</Text>
+        <View style={styles.windowDotRow}>
+          <View style={[styles.liveDot, connected && styles.liveDotOn]} />
+          <Text style={styles.stripText}>{connected ? 'LIVE TABLE' : 'CONNECTING'}</Text>
+        </View>
         <Text style={styles.stripDivider}>{'\u2022'}</Text>
         <Text style={styles.stripText}>{(table?.currentStreet ?? 'WAITING').toUpperCase()}</Text>
         <Text style={styles.stripDivider}>{'\u2022'}</Text>
@@ -531,142 +554,196 @@ export default function TableScreen() {
       </View>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-      <View style={styles.feltWrap}>
-        <View
-          style={[
-            feltStyles.felt,
-            { width: tableWidth, height: tableHeight, borderRadius: tableHeight / 2 },
-          ]}
-        >
-          <View style={[feltStyles.feltRim, { borderRadius: tableHeight / 2 }]} />
-          <View
-            pointerEvents="none"
-            style={[
-              feltStyles.feltGlow,
-              {
-                width: tableWidth * 0.72,
-                height: tableHeight * 0.58,
-                borderRadius: tableHeight,
-                left: tableWidth * 0.14,
-                top: tableHeight * 0.18,
-              },
-            ]}
-          />
-          <View
-            pointerEvents="none"
-            style={[feltStyles.feltInner, { borderRadius: tableHeight / 2 }]}
-          />
-          <View pointerEvents="none" style={[feltStyles.brandMark, { top: tableHeight * 0.52, width: tableWidth }]}>
-            <Text style={feltStyles.brandText}>TRUE STACK</Text>
-            <Text style={feltStyles.brandSub}>{'\u2660  P O K E R  \u2660'}</Text>
+      <View style={styles.roomStage}>
+        <View style={styles.skylineBand}>
+          <View style={styles.palmShadowLeft} />
+          <View style={styles.palmShadowRight} />
+          <View style={styles.balconyRail} />
+          <View style={styles.balconyPostsRow}>
+            {[0, 1, 2, 3, 4, 5].map((post) => (
+              <View key={post} style={styles.balconyPost} />
+            ))}
           </View>
+        </View>
 
+        <View style={styles.feltWrap}>
           <View
             style={[
-              feltStyles.dealerStageAnchor,
-              {
-                left: tableWidth * 0.19,
-                top: tableHeight * 0.02,
-                width: tableWidth * 0.62,
-                height: tableHeight * 0.34,
-              },
+              feltStyles.felt,
+              { width: tableWidth, height: tableHeight, borderRadius: tableHeight / 2 },
             ]}
           >
-            <DealerStage
-              cue={dealerCue}
-              preferences={preferences}
-              viewportWidth={windowWidth}
-              tableWidth={tableWidth}
-              tableHeight={tableHeight}
-              seatTargets={occupiedSeatTargets}
-            />
-          </View>
-
-          <View style={[feltStyles.board, { top: tableHeight * 0.44, width: tableWidth }]}>
-            <View style={feltStyles.potRow}>
-              <ChipStack size="lg" />
-              <View style={feltStyles.potPill}>
-                <Text style={feltStyles.potText}>Pot ${table?.pot.toFixed(2) ?? '0.00'}</Text>
-              </View>
-            </View>
-            <View style={feltStyles.boardCards}>
-              {communityCards.length > 0
-                ? communityCards.map((card, index) => <DealtCard key={`${card}-${index}`} id={card} index={index} />)
-                : [0, 1, 2, 3, 4].map((slot) => <PlayingCard key={slot} faceDown />)}
-            </View>
-            <Text style={feltStyles.streetText}>{(table?.currentStreet ?? 'waiting').toUpperCase()}</Text>
-          </View>
-
-          {seatAssignments.map(({ slot, player, isHero }, index) => (
+            <View style={[feltStyles.feltRim, { borderRadius: tableHeight / 2 }]} />
             <View
-              key={index}
+              pointerEvents="none"
               style={[
-                feltStyles.seatAnchor,
-                { left: slot.x * tableWidth - 36, top: slot.y * tableHeight - 48 },
+                feltStyles.feltGlow,
+                {
+                  width: tableWidth * 0.72,
+                  height: tableHeight * 0.58,
+                  borderRadius: tableHeight,
+                  left: tableWidth * 0.14,
+                  top: tableHeight * 0.18,
+                },
+              ]}
+            />
+            <View
+              pointerEvents="none"
+              style={[feltStyles.feltInner, { borderRadius: tableHeight / 2 }]}
+            />
+            <View pointerEvents="none" style={[feltStyles.brandMark, { top: tableHeight * 0.52, width: tableWidth }]}>
+              <Text style={feltStyles.brandText}>T S</Text>
+              <Text style={feltStyles.brandSub}>PRIVATE TABLE ROOM</Text>
+            </View>
+
+            <View
+              style={[
+                feltStyles.dealerStageAnchor,
+                {
+                  left: tableWidth * 0.19,
+                  top: tableHeight * 0.02,
+                  width: tableWidth * 0.62,
+                  height: tableHeight * 0.34,
+                },
               ]}
             >
-              <SeatPod
-                player={player}
-                isHero={isHero}
-                isTurn={!!player && table?.currentTurn === player.id}
-                seated={seated}
-                characterId={player ? playerProfiles[player.id]?.customization.playerCharacter : null}
-                verifiedHuman={player ? playerTrust[player.id]?.verifiedHuman : false}
-                onSit={!player ? () => void handleSit(index) : undefined}
+              <DealerStage
+                cue={dealerCue}
+                preferences={preferences}
+                viewportWidth={windowWidth}
+                tableWidth={tableWidth}
+                tableHeight={tableHeight}
+                seatTargets={occupiedSeatTargets}
               />
             </View>
-          ))}
+
+            <View style={[feltStyles.board, { top: tableHeight * 0.44, width: tableWidth }]}>
+              <View style={feltStyles.potRow}>
+                <ChipStack size="lg" />
+                <View style={feltStyles.potPill}>
+                  <Text style={feltStyles.potText}>Pot ${table?.pot.toFixed(2) ?? '0.00'}</Text>
+                </View>
+              </View>
+              <View style={feltStyles.boardCards}>
+                {communityCards.length > 0
+                  ? communityCards.map((card, index) => <DealtCard key={`${card}-${index}`} id={card} index={index} />)
+                  : [0, 1, 2, 3, 4].map((slot) => <PlayingCard key={slot} faceDown />)}
+              </View>
+              <Text style={feltStyles.streetText}>{(table?.currentStreet ?? 'waiting').toUpperCase()}</Text>
+            </View>
+
+            {seatAssignments.map(({ slot, player, isHero }, index) => (
+              <View
+                key={index}
+                style={[
+                  feltStyles.seatAnchor,
+                  { left: slot.x * tableWidth - 40, top: slot.y * tableHeight - 56 },
+                ]}
+              >
+                <SeatPod
+                  player={player}
+                  isHero={isHero}
+                  isTurn={!!player && table?.currentTurn === player.id}
+                  seated={seated}
+                  characterId={player ? playerProfiles[player.id]?.customization.playerCharacter : null}
+                  verifiedHuman={player ? playerTrust[player.id]?.verifiedHuman : false}
+                  onSit={!player ? () => void handleSit(index) : undefined}
+                />
+              </View>
+            ))}
+          </View>
         </View>
       </View>
 
-      <View style={styles.audioPanel}>
-        <View style={styles.audioRow}>
-          <Text style={styles.audioLabel}>3D dealer</Text>
-          <Switch value={preferences.liveDealerEnabled} onValueChange={(value) => setPreferences({ liveDealerEnabled: value })} trackColor={{ false: '#5D3A44', true: '#F1C46E' }} />
+      <View style={styles.consoleShelf}>
+        <View style={styles.consoleBezel}>
+          <Text style={styles.consoleBezelText}>TABLE CONSOLE</Text>
+          <Text style={styles.consoleBezelMeta}>Terrace Room Panel</Text>
         </View>
-        <View style={styles.audioRow}>
-          <Text style={styles.audioLabel}>Dealer & table sounds</Text>
-          <Switch value={preferences.soundEffectsEnabled} onValueChange={(value) => setPreferences({ soundEffectsEnabled: value })} trackColor={{ false: '#5D3A44', true: '#F1C46E' }} />
-        </View>
-        <View style={styles.audioRow}>
-          <Text style={styles.audioLabel}>Ambient effects</Text>
-          <Switch value={preferences.ambientEffectsEnabled} onValueChange={(value) => setPreferences({ ambientEffectsEnabled: value })} trackColor={{ false: '#5D3A44', true: '#F1C46E' }} />
-        </View>
-        <View style={styles.audioRow}>
-          <Text style={styles.audioLabel}>Haptic feedback</Text>
-          <Switch value={preferences.hapticFeedbackEnabled} onValueChange={(value) => setPreferences({ hapticFeedbackEnabled: value })} trackColor={{ false: '#5D3A44', true: '#F1C46E' }} />
-        </View>
-      </View>
 
-      <View style={styles.controlsPanel}>
-        {seated ? (
-          <Text style={styles.raiseLabel}>Selected bet ${betValue.toFixed(2)}</Text>
-        ) : (
-          <Text style={styles.sitHint}>Tap an open seat to join the table</Text>
-        )}
-        <View style={styles.quickRow}>
-          {quickBets.map((quick) => (
-            <Pressable key={quick.label} disabled={!seated} style={[styles.quickButton, !seated && styles.disabledButton]} onPress={() => setBetValue(quick.value)}>
-              <Text style={styles.quickText}>{quick.label}</Text>
+        <View style={styles.audioPanel}>
+          <Text style={styles.consoleTitle}>Sound & Atmosphere</Text>
+          <View style={styles.audioRow}>
+            <Text style={styles.audioLabel}>3D dealer</Text>
+            <Switch value={preferences.liveDealerEnabled} onValueChange={(value) => setPreferences({ liveDealerEnabled: value })} trackColor={{ false: '#7B746A', true: '#E1B847' }} />
+          </View>
+          <View style={styles.audioRow}>
+            <Text style={styles.audioLabel}>Dealer & table sounds</Text>
+            <Switch value={preferences.soundEffectsEnabled} onValueChange={(value) => setPreferences({ soundEffectsEnabled: value })} trackColor={{ false: '#7B746A', true: '#E1B847' }} />
+          </View>
+          <View style={styles.audioRow}>
+            <Text style={styles.audioLabel}>Ambient effects</Text>
+            <Switch value={preferences.ambientEffectsEnabled} onValueChange={(value) => setPreferences({ ambientEffectsEnabled: value })} trackColor={{ false: '#7B746A', true: '#E1B847' }} />
+          </View>
+          <View style={styles.audioRow}>
+            <Text style={styles.audioLabel}>Haptic feedback</Text>
+            <Switch value={preferences.hapticFeedbackEnabled} onValueChange={(value) => setPreferences({ hapticFeedbackEnabled: value })} trackColor={{ false: '#7B746A', true: '#E1B847' }} />
+          </View>
+        </View>
+
+        <View style={styles.controlsPanel}>
+          <Text style={styles.consoleTitle}>Action Deck</Text>
+          {seated ? (
+            <Text style={styles.raiseLabel}>Selected bet ${betValue.toFixed(2)}</Text>
+          ) : (
+            <Text style={styles.sitHint}>Tap an open seat to join the table</Text>
+          )}
+          <View style={styles.quickRow}>
+            {quickBets.map((quick) => (
+              <Pressable key={quick.label} disabled={!seated} style={[styles.quickButton, !seated && styles.disabledButton]} onPress={() => setBetValue(quick.value)}>
+                <Text style={styles.quickText}>{quick.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={styles.actionsGrid}>
+            <Pressable disabled={!seated} style={[styles.actionButton, styles.foldButton, !seated && styles.disabledButton]} onPress={() => sendAction('fold')}>
+              <Text style={styles.actionButtonText}>Fold</Text>
             </Pressable>
-          ))}
+            <Pressable disabled={!seated} style={[styles.actionButton, !seated && styles.disabledButton]} onPress={() => sendAction('check')}>
+              <Text style={styles.actionButtonText}>Check</Text>
+            </Pressable>
+            <Pressable disabled={!seated} style={[styles.actionButton, !seated && styles.disabledButton]} onPress={() => sendAction('call', betValue)}>
+              <Text style={styles.actionButtonText}>Call</Text>
+            </Pressable>
+            <Pressable disabled={!seated} style={[styles.actionButton, styles.raiseButton, !seated && styles.disabledButton]} onPress={() => sendAction('raise', betValue)}>
+              <Text style={styles.actionButtonText}>Raise</Text>
+            </Pressable>
+            <Pressable disabled={!seated} style={[styles.actionButton, !seated && styles.disabledButton]} onPress={() => sendAction('all-in', mySeat?.stack ?? betValue)}>
+              <Text style={styles.actionButtonText}>All-in</Text>
+            </Pressable>
+          </View>
         </View>
-        <View style={styles.actionsGrid}>
-          <Pressable disabled={!seated} style={[styles.actionButton, styles.foldButton, !seated && styles.disabledButton]} onPress={() => sendAction('fold')}>
-            <Text style={styles.actionButtonText}>Fold</Text>
-          </Pressable>
-          <Pressable disabled={!seated} style={[styles.actionButton, !seated && styles.disabledButton]} onPress={() => sendAction('check')}>
-            <Text style={styles.actionButtonText}>Check</Text>
-          </Pressable>
-          <Pressable disabled={!seated} style={[styles.actionButton, !seated && styles.disabledButton]} onPress={() => sendAction('call', betValue)}>
-            <Text style={styles.actionButtonText}>Call</Text>
-          </Pressable>
-          <Pressable disabled={!seated} style={[styles.actionButton, styles.raiseButton, !seated && styles.disabledButton]} onPress={() => sendAction('raise', betValue)}>
-            <Text style={styles.actionButtonText}>Raise</Text>
-          </Pressable>
-          <Pressable disabled={!seated} style={[styles.actionButton, !seated && styles.disabledButton]} onPress={() => sendAction('all-in', mySeat?.stack ?? betValue)}>
-            <Text style={styles.actionButtonText}>All-in</Text>
-          </Pressable>
+      </View>
+
+      <View style={styles.railConsole}>
+        <View style={styles.railTabs}>
+          <Text style={[styles.railTab, styles.railTabActive]}>Session</Text>
+          <Text style={styles.railTab}>Trust</Text>
+          <Text style={styles.railTab}>Dealer Booth</Text>
+        </View>
+        <View style={styles.railGrid}>
+          <View style={styles.railCard}>
+            <Text style={styles.railCardLabel}>Hand log</Text>
+            <Text style={styles.railCardValue}>{boardSummary}</Text>
+            <Text style={styles.railCardMeta}>Street {(table?.currentStreet ?? 'waiting').toUpperCase()} • Pot ${table?.pot.toFixed(2) ?? '0.00'}</Text>
+          </View>
+          <View style={styles.railCard}>
+            <Text style={styles.railCardLabel}>Roster check</Text>
+            <Text style={styles.railCardValue}>{verifiedSeatCount} verified human seat{verifiedSeatCount === 1 ? '' : 's'}</Text>
+            <Text style={styles.railCardMeta}>{table?.players.length ?? 0} players tracked • {connected ? 'live connection stable' : 'reconnecting session'}</Text>
+          </View>
+          <View style={styles.railCard}>
+            <Text style={styles.railCardLabel}>Dealer booth</Text>
+            <Text style={styles.railCardValue}>{preferences.liveDealerEnabled ? `${dealerSkinLabel} dealer active` : 'Virtual dealer active'}</Text>
+            <Text style={styles.railCardMeta}>{preferences.liveDealerQuality === 'auto' ? 'Auto quality' : `${preferences.liveDealerQuality} quality`} • dealer stays behind the board</Text>
+          </View>
+        </View>
+        <View style={styles.ledgerStrip}>
+          <Text style={styles.ledgerText}>TABLE {TABLE_ID.toUpperCase()}</Text>
+          <Text style={styles.ledgerDivider}>{'\u2022'}</Text>
+          <Text style={styles.ledgerText}>HERO {effectiveHeroSlot !== null ? `SEAT ${effectiveHeroSlot + 1}` : 'RAIL'}</Text>
+          <Text style={styles.ledgerDivider}>{'\u2022'}</Text>
+          <Text style={styles.ledgerText}>{preferences.soundEffectsEnabled ? 'SFX ON' : 'SFX OFF'}</Text>
         </View>
       </View>
 
@@ -733,6 +810,104 @@ const styles = StyleSheet.create({
   heroBannerTitle: { color: '#FFF4E7', fontSize: 18, fontWeight: '900' },
   heroBannerMeta: { color: '#F7D9A2', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
   heroBannerNote: { color: '#D2BCB4', fontSize: 12, lineHeight: 17 },
+  consoleShelf: {
+    marginHorizontal: 8,
+    borderWidth: 1,
+    borderColor: '#8B857B',
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#DAD7CF',
+    shadowColor: '#261A14',
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+  },
+  consoleBezel: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#C8C9CA',
+    borderBottomWidth: 1,
+    borderBottomColor: '#8B857B',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  consoleBezelText: {
+    color: '#37322D',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1.1,
+  },
+  consoleBezelMeta: {
+    color: '#6F665D',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  roomStage: {
+    marginHorizontal: 8,
+    borderWidth: 1,
+    borderColor: '#6C6457',
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#BFC8D5',
+  },
+  skylineBand: {
+    height: 132,
+    backgroundColor: '#B9D7EC',
+    position: 'relative',
+  },
+  palmShadowLeft: {
+    position: 'absolute',
+    left: 10,
+    top: 8,
+    width: 80,
+    height: 62,
+    borderTopLeftRadius: 50,
+    borderTopRightRadius: 14,
+    borderBottomRightRadius: 40,
+    backgroundColor: 'rgba(52, 95, 63, 0.28)',
+    transform: [{ rotate: '-12deg' }],
+  },
+  palmShadowRight: {
+    position: 'absolute',
+    right: 10,
+    top: 10,
+    width: 86,
+    height: 58,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 54,
+    borderBottomLeftRadius: 46,
+    backgroundColor: 'rgba(45, 90, 58, 0.24)',
+    transform: [{ rotate: '10deg' }],
+  },
+  balconyRail: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 22,
+    height: 14,
+    backgroundColor: '#ECEAE4',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#8B857B',
+  },
+  balconyPostsRow: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  balconyPost: {
+    width: 12,
+    height: 28,
+    borderTopLeftRadius: 5,
+    borderTopRightRadius: 5,
+    backgroundColor: '#EAE7E0',
+    borderWidth: 1,
+    borderColor: '#8B857B',
+  },
   statusCard: {
     backgroundColor: '#0F1730',
     borderColor: '#253454',
@@ -749,19 +924,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: '#241319',
-    borderColor: '#6A4047',
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    backgroundColor: '#DBD7D0',
+    borderColor: '#8C867C',
     borderWidth: 1,
-    borderRadius: 999,
-    alignSelf: 'center',
+    borderRadius: 8,
+    alignSelf: 'stretch',
+    marginHorizontal: 8,
   },
+  windowDotRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4A5A7A' },
   liveDotOn: { backgroundColor: '#4ADE80', shadowColor: '#4ADE80', shadowOpacity: 0.9, shadowRadius: 6 },
-  stripText: { color: '#F0DED0', fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
-  stripDivider: { color: '#7A4A53', fontSize: 12 },
-  stripTimer: { color: '#F1C46E', fontSize: 12, fontWeight: '900' },
+  stripText: { color: '#332E29', fontSize: 11, fontWeight: '800', letterSpacing: 0.8 },
+  stripDivider: { color: '#7D756A', fontSize: 12 },
+  stripTimer: { color: '#8F4B12', fontSize: 12, fontWeight: '900' },
   tableCard: {
     backgroundColor: '#0A1226',
     borderRadius: 24,
@@ -791,62 +968,151 @@ const styles = StyleSheet.create({
   seatName: { color: '#E7EEFF', fontSize: 14, fontWeight: '700' },
   seatMeta: { color: '#96B2E2', fontSize: 12 },
   audioPanel: {
-    borderWidth: 1,
-    borderColor: '#4B2630',
-    backgroundColor: '#221017',
-    borderRadius: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: '#8B857B',
+    backgroundColor: '#CDA03B',
     padding: 12,
     gap: 10,
-    marginHorizontal: 8,
   },
-  audioRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  audioLabel: { color: '#FFF4E7', fontSize: 14, fontWeight: '700' },
+  consoleTitle: {
+    color: '#39210E',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  audioRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(251,237,183,0.36)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  audioLabel: { color: '#39210E', fontSize: 14, fontWeight: '800' },
   controlsPanel: {
-    borderWidth: 1,
-    borderColor: '#4B2630',
-    backgroundColor: '#221017',
-    borderRadius: 20,
+    backgroundColor: '#D8A12B',
     padding: 12,
     gap: 10,
-    marginHorizontal: 8,
   },
-  raiseLabel: { color: '#FFF4E7', fontSize: 16, fontWeight: '800' },
-  sitHint: { color: '#F1C46E', fontSize: 14, fontWeight: '800', textAlign: 'center' },
+  raiseLabel: { color: '#2E160A', fontSize: 16, fontWeight: '900' },
+  sitHint: { color: '#5B2B08', fontSize: 14, fontWeight: '900', textAlign: 'center' },
   disabledButton: { opacity: 0.4 },
   quickRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   quickButton: {
-    borderColor: '#7A4A53',
+    borderColor: '#956C14',
     borderWidth: 1,
-    borderRadius: 999,
+    borderRadius: 6,
     paddingHorizontal: 12,
     paddingVertical: 7,
-    backgroundColor: '#3C1D26',
+    backgroundColor: '#F3D17A',
   },
-  quickText: { color: '#FFF0D8', fontSize: 12, fontWeight: '800' },
+  quickText: { color: '#3B210B', fontSize: 12, fontWeight: '900' },
   actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   actionButton: {
     flexBasis: '31%',
-    borderRadius: 14,
-    backgroundColor: '#3C1D26',
+    borderRadius: 6,
+    backgroundColor: '#F7DE95',
     paddingVertical: 12,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#7A4A53',
+    borderColor: '#956C14',
   },
-  foldButton: { backgroundColor: '#4D1D27', borderColor: '#A55B65' },
-  raiseButton: { backgroundColor: '#553710', borderColor: '#F1C46E' },
-  actionButtonText: { color: '#FFF4E7', fontWeight: '800', fontSize: 13 },
+  foldButton: { backgroundColor: '#8A6020', borderColor: '#6A4510' },
+  raiseButton: { backgroundColor: '#F2C556', borderColor: '#A36E16' },
+  actionButtonText: { color: '#2E160A', fontWeight: '900', fontSize: 13 },
+  railConsole: {
+    marginHorizontal: 8,
+    borderWidth: 1,
+    borderColor: '#8B857B',
+    borderRadius: 10,
+    backgroundColor: '#D7D4CC',
+    overflow: 'hidden',
+  },
+  railTabs: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingTop: 10,
+    backgroundColor: '#D7D4CC',
+  },
+  railTab: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    backgroundColor: '#C1BDB4',
+    color: '#504941',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  railTabActive: {
+    backgroundColor: '#F3E5B7',
+    color: '#3B2C1B',
+  },
+  railGrid: {
+    gap: 8,
+    padding: 10,
+    backgroundColor: '#F0EEE8',
+  },
+  railCard: {
+    borderWidth: 1,
+    borderColor: '#C3BCAE',
+    borderRadius: 10,
+    backgroundColor: '#FBFAF6',
+    padding: 10,
+    gap: 4,
+  },
+  railCardLabel: {
+    color: '#8D6F3F',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  railCardValue: {
+    color: '#352E27',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  railCardMeta: {
+    color: '#6E655C',
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  ledgerStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#C6C7C9',
+    borderTopWidth: 1,
+    borderTopColor: '#A39D92',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  ledgerText: {
+    color: '#49433C',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+  ledgerDivider: {
+    color: '#827B73',
+    fontSize: 11,
+  },
   footerLinks: { flexDirection: 'row', gap: 10, marginHorizontal: 8 },
   linkButton: {
     flex: 1,
-    borderRadius: 14,
-    backgroundColor: '#221017',
+    borderRadius: 6,
+    backgroundColor: '#DDD7CA',
     alignItems: 'center',
     paddingVertical: 13,
     borderWidth: 1,
-    borderColor: '#7A4A53',
+    borderColor: '#8B857B',
   },
-  linkButtonText: { color: '#FFF4E7', fontWeight: '800' },
+  linkButtonText: { color: '#2F2A25', fontWeight: '900' },
   primaryButton: {
     backgroundColor: '#F1C46E',
     borderRadius: 16,
@@ -861,9 +1127,9 @@ const styles = StyleSheet.create({
 const feltStyles = StyleSheet.create({
   felt: {
     position: 'relative',
-    backgroundColor: '#0A5A38',
-    borderWidth: 10,
-    borderColor: '#6C4325',
+    backgroundColor: '#0CB54E',
+    borderWidth: 11,
+    borderColor: '#5D341B',
     alignSelf: 'center',
     shadowColor: '#000',
     shadowOpacity: 0.5,
@@ -877,12 +1143,12 @@ const feltStyles = StyleSheet.create({
     left: 8,
     right: 8,
     bottom: 8,
-    borderWidth: 2,
-    borderColor: 'rgba(244,228,170,0.22)',
+    borderWidth: 2.5,
+    borderColor: 'rgba(60,80,28,0.28)',
   },
   feltGlow: {
     position: 'absolute',
-    backgroundColor: 'rgba(228,201,131,0.10)',
+    backgroundColor: 'rgba(255,255,170,0.12)',
   },
   feltInner: {
     position: 'absolute',
@@ -890,20 +1156,20 @@ const feltStyles = StyleSheet.create({
     left: '7%',
     right: '7%',
     bottom: '11%',
-    borderWidth: 2,
-    borderColor: 'rgba(244,228,170,0.18)',
-    backgroundColor: 'rgba(255,255,255,0.035)',
+    borderWidth: 3,
+    borderColor: 'rgba(29,124,48,0.24)',
+    backgroundColor: 'rgba(255,255,255,0.02)',
   },
   brandMark: { position: 'absolute', alignItems: 'center', gap: 3 },
-  brandText: { color: 'rgba(255,255,255,0.10)', fontSize: 26, fontWeight: '900', letterSpacing: 5 },
-  brandSub: { color: 'rgba(255,255,255,0.09)', fontSize: 10, fontWeight: '800', letterSpacing: 2 },
+  brandText: { color: 'rgba(20,84,38,0.16)', fontSize: 56, fontWeight: '900', letterSpacing: 6 },
+  brandSub: { color: 'rgba(21,80,34,0.18)', fontSize: 11, fontWeight: '900', letterSpacing: 2 },
   dealer: { position: 'absolute', width: 68, alignItems: 'center', gap: 3 },
   dealerStageAnchor: { position: 'absolute', overflow: 'hidden' },
   board: { position: 'absolute', alignItems: 'center', gap: 8 },
   potRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   potPill: {
-    backgroundColor: 'rgba(4,14,10,0.7)',
-    borderRadius: 999,
+    backgroundColor: 'rgba(39,25,14,0.72)',
+    borderRadius: 7,
     paddingHorizontal: 14,
     paddingVertical: 5,
     borderWidth: 1,
@@ -912,12 +1178,12 @@ const feltStyles = StyleSheet.create({
   potText: { color: '#FBE7A8', fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
   boardCards: { flexDirection: 'row', gap: 6 },
   streetText: {
-    color: 'rgba(255,255,255,0.75)',
+    color: 'rgba(38,60,24,0.85)',
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '900',
     letterSpacing: 2,
   },
-  seatAnchor: { position: 'absolute', width: 72, alignItems: 'center' },
+  seatAnchor: { position: 'absolute', width: 80, alignItems: 'center' },
   tableCaption: { color: '#8FA6CC', fontSize: 12, textAlign: 'center', marginTop: 30 },
 });
 
@@ -947,50 +1213,92 @@ const cardStyles = StyleSheet.create({
 
 const seatStyles = StyleSheet.create({
   pod: {
-    width: 72,
+    width: 80,
     alignItems: 'center',
-    gap: 3,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    borderRadius: 16,
-    backgroundColor: 'rgba(20,10,16,0.88)',
-    borderWidth: 1,
-    borderColor: '#5B323B',
+    gap: 1,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
   },
-  heroPod: { borderColor: '#F1C46E', backgroundColor: 'rgba(45,21,29,0.96)' },
-  turnPod: { borderColor: '#F1C46E', shadowColor: '#F1C46E', shadowOpacity: 0.45, shadowRadius: 8 },
-  emptyPod: { borderStyle: 'dashed', borderColor: '#6A4047', backgroundColor: 'rgba(20,10,16,0.55)' },
-  openPod: { borderColor: '#4ADE80', backgroundColor: 'rgba(12,40,26,0.72)' },
+  heroPod: {},
+  turnPod: {},
+  emptyPod: {},
+  openPod: {},
   pressedPod: { opacity: 0.6, transform: [{ scale: 0.96 }] },
-  cardsRow: { flexDirection: 'row', gap: 3, height: 24, marginBottom: 1 },
-  holeBack: { width: 16, height: 23, borderRadius: 3, backgroundColor: '#17345B', borderWidth: 1, borderColor: '#4C86D3' },
+  cardsRow: { flexDirection: 'row', gap: 4, height: 22, marginBottom: -2, zIndex: 2 },
+  holeBack: { width: 16, height: 22, borderRadius: 2, backgroundColor: '#C61F2F', borderWidth: 1, borderColor: '#F6F0E4' },
+  holeBackTiltLeft: { transform: [{ rotate: '-18deg' }] },
+  holeBackTiltRight: { transform: [{ rotate: '16deg' }] },
+  chairBack: {
+    width: 74,
+    minHeight: 76,
+    borderRadius: 38,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    backgroundColor: '#731B1D',
+    borderWidth: 3,
+    borderColor: '#B78A3A',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 8,
+    paddingHorizontal: 5,
+    gap: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  heroChairBack: {
+    borderColor: '#F1C46E',
+    backgroundColor: '#882023',
+  },
+  emptyChairBack: {
+    backgroundColor: 'rgba(84, 30, 31, 0.7)',
+    borderStyle: 'dashed',
+    borderColor: '#B78A3A',
+  },
+  openChairBack: {
+    backgroundColor: '#6D3A1F',
+    borderStyle: 'solid',
+  },
+  chairSeat: {
+    width: 54,
+    height: 18,
+    marginTop: -4,
+    borderRadius: 10,
+    backgroundColor: '#C92B2E',
+    borderWidth: 2,
+    borderColor: '#B78A3A',
+  },
+  openChairSeat: {
+    backgroundColor: '#9E6232',
+  },
   avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
   },
-  avatarEmoji: { fontSize: 20, lineHeight: 22 },
+  avatarEmoji: { fontSize: 15, lineHeight: 17 },
   trustShield: {
     position: 'absolute',
-    right: -4,
-    bottom: -5,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    right: -3,
+    bottom: -4,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     backgroundColor: '#3A2414',
     borderWidth: 1,
     borderColor: '#E7C57D',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  trustShieldText: { color: '#F9E8BD', fontSize: 8, fontWeight: '900' },
+  trustShieldText: { color: '#F9E8BD', fontSize: 7, fontWeight: '900' },
   dealerButton: {
     position: 'absolute',
-    right: -6,
-    bottom: -4,
+    right: 2,
+    top: 8,
     width: 18,
     height: 18,
     borderRadius: 9,
@@ -1001,25 +1309,25 @@ const seatStyles = StyleSheet.create({
     borderColor: '#0B1220',
   },
   dealerButtonText: { color: '#0B1220', fontSize: 10, fontWeight: '900' },
-  pulseRing: { position: 'absolute', top: -5, left: -5, right: -5, bottom: -5, borderRadius: 18, borderWidth: 2, borderColor: '#F1C46E' },
-  nameTag: { borderRadius: 9, paddingHorizontal: 6, paddingVertical: 1, backgroundColor: 'rgba(14,7,10,0.78)', borderWidth: 1, marginTop: 1 },
-  name: { color: '#FFF4E7', fontSize: 11, fontWeight: '800', maxWidth: 60 },
-  stackRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 },
-  stack: { color: '#F1C46E', fontSize: 11, fontWeight: '900' },
-  status: { color: '#D6B6A4', fontSize: 10, fontWeight: '700' },
-  statusActive: { color: '#FFF4E7' },
+  pulseRing: { position: 'absolute', top: 8, left: 1, right: 1, bottom: 16, borderRadius: 36, borderWidth: 2, borderColor: '#F1C46E' },
+  nameTag: { borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1, backgroundColor: 'rgba(78,11,14,0.65)', borderWidth: 1, marginTop: -1 },
+  name: { color: '#FFF4E7', fontSize: 10, fontWeight: '800', maxWidth: 64, textAlign: 'center' },
+  stackRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: -1 },
+  stack: { color: '#F8E0A0', fontSize: 10, fontWeight: '900' },
+  status: { color: '#4E2B0D', fontSize: 9, fontWeight: '900', marginTop: 1 },
+  statusActive: { color: '#7A2C00' },
   emptyAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#3C4E70',
+    borderColor: '#E6CC8B',
     borderStyle: 'dashed',
   },
-  emptyPlus: { color: '#9F7A80', fontSize: 20, fontWeight: '700' },
-  emptyLabel: { color: '#B69297', fontSize: 10, fontWeight: '700' },
+  emptyPlus: { color: '#F5E0AA', fontSize: 18, fontWeight: '900' },
+  emptyLabel: { color: '#F6E6C2', fontSize: 9, fontWeight: '800', textAlign: 'center' },
   openAvatar: { borderColor: '#4ADE80', borderStyle: 'solid' },
-  openLabel: { color: '#8FE9B4', fontWeight: '800' },
+  openLabel: { color: '#F5E0AA', fontWeight: '900' },
 });
