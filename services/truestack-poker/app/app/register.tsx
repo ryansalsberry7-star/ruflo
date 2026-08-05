@@ -4,15 +4,27 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { PLAYER_CHARACTERS, getPlayerCharacter, type PlayerCharacterId } from './lib/playerIdentity';
 import { useAuth } from './lib/auth';
 
+const MIN_PASSWORD_LENGTH = 8;
+
 export default function RegistrationScreen() {
   const { register, loading, error } = useAuth();
   const [username, setUsername] = useState('RiverFox');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [playerCharacter, setPlayerCharacter] = useState<PlayerCharacterId>('river-fox');
   const activeCharacter = getPlayerCharacter(playerCharacter);
 
+  const passwordTooShort = password.length > 0 && password.length < MIN_PASSWORD_LENGTH;
+  const passwordsMismatch = confirmPassword.length > 0 && password !== confirmPassword;
+  const canSubmit =
+    username.trim().length > 0 &&
+    password.length >= MIN_PASSWORD_LENGTH &&
+    password === confirmPassword;
+
   async function handleRegister(): Promise<void> {
+    if (!canSubmit) return;
     try {
-      await register({ username, playerCharacter });
+      await register({ username, password, playerCharacter });
       router.replace('/');
     } catch {
       // Context already exposes the error state.
@@ -41,6 +53,32 @@ export default function RegistrationScreen() {
         <Text style={styles.label}>Username</Text>
         <TextInput value={username} onChangeText={setUsername} autoCapitalize="words" style={styles.input} placeholder="RiverFox" placeholderTextColor="#6D7EA7" />
         <Text style={styles.hint}>A unique player ID is generated automatically, and you can change your character later from profile.</Text>
+
+        <Text style={styles.label}>Password</Text>
+        <TextInput
+          value={password}
+          onChangeText={setPassword}
+          autoCapitalize="none"
+          autoCorrect={false}
+          secureTextEntry
+          style={styles.input}
+          placeholder="At least 8 characters"
+          placeholderTextColor="#6D7EA7"
+        />
+        {passwordTooShort ? <Text style={styles.error}>Password must be at least {MIN_PASSWORD_LENGTH} characters.</Text> : null}
+
+        <Text style={styles.label}>Confirm password</Text>
+        <TextInput
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          autoCapitalize="none"
+          autoCorrect={false}
+          secureTextEntry
+          style={styles.input}
+          placeholder="Re-enter your password"
+          placeholderTextColor="#6D7EA7"
+        />
+        {passwordsMismatch ? <Text style={styles.error}>Passwords don&apos;t match.</Text> : null}
       </View>
 
       <View style={styles.card}>
@@ -67,7 +105,7 @@ export default function RegistrationScreen() {
         </View>
         <Text style={styles.hint}>Verified-human shielding appears on your avatar after trust checks are complete.</Text>
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Pressable style={styles.button} onPress={() => void handleRegister()} disabled={loading || username.trim().length === 0}>
+        <Pressable style={loading || !canSubmit ? styles.buttonDisabled : styles.button} onPress={() => void handleRegister()} disabled={loading || !canSubmit}>
           <Text style={styles.buttonText}>{loading ? 'Creating account...' : 'Create account'}</Text>
         </Pressable>
       </View>
@@ -141,6 +179,13 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     paddingVertical: 14,
+  },
+  buttonDisabled: {
+    backgroundColor: '#F1C46E',
+    borderRadius: 16,
+    alignItems: 'center',
+    paddingVertical: 14,
+    opacity: 0.5,
   },
   buttonText: { color: '#2A1118', fontSize: 15, fontWeight: '900' },
 });

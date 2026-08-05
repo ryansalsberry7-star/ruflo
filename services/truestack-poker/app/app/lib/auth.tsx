@@ -17,8 +17,8 @@ interface AuthContextValue {
   authToken: string | null;
   loading: boolean;
   error: string | null;
-  login: (input: { userId?: string; username?: string }) => Promise<void>;
-  register: (input: { userId?: string; username: string; playerCharacter?: string }) => Promise<void>;
+  login: (input: { userId?: string; username?: string; password: string }) => Promise<void>;
+  register: (input: { userId?: string; username: string; password: string; playerCharacter?: string }) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -69,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  async function login(input: { userId?: string; username?: string }): Promise<void> {
+  async function login(input: { userId?: string; username?: string; password: string }): Promise<void> {
     setLoading(true);
     setError(null);
     try {
@@ -87,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function register(input: { userId?: string; username: string; playerCharacter?: string }): Promise<void> {
+  async function register(input: { userId?: string; username: string; password: string; playerCharacter?: string }): Promise<void> {
     setLoading(true);
     setError(null);
     try {

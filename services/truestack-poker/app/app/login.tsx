@@ -6,10 +6,12 @@ import { useAuth } from './lib/auth';
 export default function LoginScreen() {
   const { login, loading, error } = useAuth();
   const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const canSubmit = username.trim().length > 0 && password.length > 0;
 
   async function handleLogin(): Promise<void> {
     try {
-      await login({ username });
+      await login({ username, password });
       router.replace('/');
     } catch {
       // Context already exposes the error state.
@@ -36,11 +38,23 @@ export default function LoginScreen() {
           placeholder="Enter your username"
           placeholderTextColor="#6D5750"
         />
+        <Text style={styles.label}>Password</Text>
+        <TextInput
+          value={password}
+          onChangeText={setPassword}
+          autoCapitalize="none"
+          autoCorrect={false}
+          secureTextEntry
+          style={styles.input}
+          placeholder="Enter your password"
+          placeholderTextColor="#6D5750"
+          onSubmitEditing={() => void handleLogin()}
+        />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Pressable
-          style={loading || username.trim().length === 0 ? styles.buttonDisabled : styles.button}
+          style={loading || !canSubmit ? styles.buttonDisabled : styles.button}
           onPress={() => void handleLogin()}
-          disabled={loading || username.trim().length === 0}
+          disabled={loading || !canSubmit}
         >
           <Text style={styles.buttonText}>{loading ? 'Signing in…' : 'Sign in'}</Text>
         </Pressable>

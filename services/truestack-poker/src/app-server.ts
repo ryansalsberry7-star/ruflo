@@ -15,6 +15,7 @@ import { SessionService } from './services/session-service.js';
 import { TrustService } from './services/trust-service.js';
 import { UserService } from './services/user-service.js';
 import { WalletService } from './services/wallet-service.js';
+import { hashPassword, isPasswordStrongEnough } from './services/password-service.js';
 
 export interface PlatformServices {
   poker: PokerService;
@@ -41,7 +42,15 @@ export interface PlatformServerOptions {
   adminKey?: string;
 }
 
-export function buildDefaultServices(): PlatformServices {
+export interface BuildServicesOptions {
+  /** Persist user accounts to data/runtime/users.json. Off by default so test runs stay isolated. */
+  persistUsers?: boolean;
+}
+
+/** Dev-only seed password for the bundled demo accounts (Ada/Linus/Grace). Override via env for shared environments. */
+export const SEED_USER_PASSWORD = process.env.TRUESTACK_SEED_PASSWORD?.trim() || 'truestack-dev-only';
+
+export function buildDefaultServices(options: BuildServicesOptions = {}): PlatformServices {
   const highHands = new HighHandService();
   const poker = new PokerService(highHands);
   const wallet = new WalletService();
@@ -54,17 +63,18 @@ export function buildDefaultServices(): PlatformServices {
   const regionalGating = new RegionalGatingService(authorizedJurisdictions);
   const compliance = new ComplianceService({ realMoneyEnabled, regionalGating });
   const funding = new FundingService(wallet, payment, compliance);
-  const users = new UserService();
+  const users = new UserService({ storagePath: options.persistUsers ? undefined : null });
   const analytics = new AnalyticsService();
   const sessions = new SessionService();
   const trust = new TrustService();
   const community = new CommunityService();
   const coach = new CoachService();
 
+  const seedPasswordHash = hashPassword(SEED_USER_PASSWORD);
   const initialUsers = [
-    users.createUser('p1', 'Ada'),
-    users.createUser('p2', 'Linus'),
-    users.createUser('p3', 'Grace'),
+    users.createUser('p1', 'Ada', seedPasswordHash),
+    users.createUser('p2', 'Linus', seedPasswordHash),
+    users.createUser('p3', 'Grace', seedPasswordHash),
   ];
 
   for (const user of initialUsers) {
@@ -110,9 +120,10 @@ export function buildDefaultServices(): PlatformServices {
 
 export function createPlatformServer(services: PlatformServices, options: PlatformServerOptions = {}) {
   const adminKey = options.adminKey ?? process.env.TRUESTACK_ADMIN_KEY?.trim() ?? null;
+  const loginAttempts = new Map<string, LoginAttemptEntry>();
   const server = createServer(async (req, res) => {
     try {
-      await routeRequest(req, res, services, adminKey);
+      await routeRequest(req, res, services, adminKey, loginAttempts);
     } catch (error) {
       sendJson(res, 500, { error: error instanceof Error ? error.message : 'Unexpected server error' });
     }
@@ -160,7 +171,13 @@ export function createPlatformServer(services: PlatformServices, options: Platfo
   };
 }
 
-async function routeRequest(req: IncomingMessage, res: ServerResponse, services: PlatformServices, adminKey: string | null): Promise<void> {
+async function routeRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  services: PlatformServices,
+  adminKey: string | null,
+  loginAttempts: Map<string, LoginAttemptEntry>
+): Promise<void> {
   const method = req.method ?? 'GET';
   const requestUrl = new URL(req.url ?? '/', 'http://localhost');
   const pathname = requestUrl.pathname;
@@ -210,6 +227,14 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
     const body = await readJsonBody(req);
     const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
     const username = typeof body.username === 'string' ? body.username.trim() : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    const identifier = (userId || username).toLowerCase();
+    const attemptKey = `${getClientIp(req)}:${identifier}`;
+
+    if (isLoginLocked(loginAttempts, attemptKey)) {
+      sendJson(res, 429, { error: 'Too many login attempts. Try again in a few minutes.' });
+      return;
+    }
 
     const user = userId
       ? services.users.hasUser(userId)
@@ -219,11 +244,15 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
         ? services.users.findByUsername(username)
         : null;
 
-    if (!user) {
-      sendJson(res, 404, { error: 'User not found. Register first or use an existing profile.' });
+    const passwordValid = user ? services.users.verifyPassword(user.id, password) : false;
+
+    if (!user || !passwordValid) {
+      recordFailedLogin(loginAttempts, attemptKey);
+      sendJson(res, 401, { error: 'Invalid username or password.' });
       return;
     }
 
+    clearLoginAttempts(loginAttempts, attemptKey);
     const authSession = services.sessions.issueAuthToken(user.id);
 
     sendJson(res, 200, {
@@ -237,14 +266,23 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
   if (method === 'POST' && pathname === '/api/auth/register') {
     const body = await readJsonBody(req);
     const username = String(body.username ?? '').trim();
+    const password = typeof body.password === 'string' ? body.password : '';
     if (!username) {
       sendJson(res, 400, { error: 'username is required' });
+      return;
+    }
+    if (!isPasswordStrongEnough(password)) {
+      sendJson(res, 400, { error: 'Password must be at least 8 characters.' });
+      return;
+    }
+    if (services.users.isUsernameTaken(username)) {
+      sendJson(res, 409, { error: 'That username is already taken.' });
       return;
     }
 
     const requestedUserId = String(body.userId ?? '').trim();
     const userId = createAvailableUserId(services, requestedUserId || username);
-    const user = services.users.createUser(userId, username);
+    const user = services.users.createUser(userId, username, hashPassword(password));
     const requestedCharacter = typeof body.playerCharacter === 'string' ? body.playerCharacter.trim() : '';
     if (requestedCharacter) {
       services.community.setCustomization(user.id, { playerCharacter: requestedCharacter });
@@ -806,7 +844,6 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
       return;
     }
 
-    services.users.createUser(userId, username);
     services.trust.ensurePlayer(userId);
     services.community.ensureProfile(userId, username);
 
@@ -873,9 +910,7 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
       return;
     }
     const userId = actor.id;
-    const username = actor.username;
 
-    services.users.createUser(userId, username);
     const registration = services.poker.registerTournament(tournamentId, userId);
     sendJson(res, 200, { registration });
     return;
@@ -959,6 +994,43 @@ function buildAuthSessionPayload(services: PlatformServices, userId: string, use
     trust: services.trust.getPlayerTrust(userId),
     playerCharacter: services.community.getProfile(userId).customization.playerCharacter,
   };
+}
+
+interface LoginAttemptEntry {
+  count: number;
+  firstAttemptAt: number;
+}
+
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+
+function isLoginLocked(attempts: Map<string, LoginAttemptEntry>, key: string): boolean {
+  const entry = attempts.get(key);
+  if (!entry) return false;
+  if (Date.now() - entry.firstAttemptAt > LOGIN_WINDOW_MS) {
+    attempts.delete(key);
+    return false;
+  }
+  return entry.count >= LOGIN_MAX_ATTEMPTS;
+}
+
+function recordFailedLogin(attempts: Map<string, LoginAttemptEntry>, key: string): void {
+  const entry = attempts.get(key);
+  if (!entry || Date.now() - entry.firstAttemptAt > LOGIN_WINDOW_MS) {
+    attempts.set(key, { count: 1, firstAttemptAt: Date.now() });
+    return;
+  }
+  entry.count += 1;
+}
+
+function clearLoginAttempts(attempts: Map<string, LoginAttemptEntry>, key: string): void {
+  attempts.delete(key);
+}
+
+function getClientIp(req: IncomingMessage): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.length > 0) return forwarded.split(',')[0].trim();
+  return req.socket.remoteAddress ?? 'unknown';
 }
 
 function readBearerToken(req: IncomingMessage): string | null {

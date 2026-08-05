@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import WebSocket from 'ws';
-import { buildDefaultServices, createPlatformServer } from '../src/app-server.js';
+import { buildDefaultServices, createPlatformServer, SEED_USER_PASSWORD } from '../src/app-server.js';
 
 interface WsEnvelope {
   event: string;
@@ -47,7 +47,7 @@ test('allows websocket reconnect using reconnect token within grace window', asy
     const loginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ username: 'Ada' }),
+      body: JSON.stringify({ username: 'Ada', password: SEED_USER_PASSWORD }),
     });
     const loginPayload = await loginRes.json();
 
@@ -88,14 +88,14 @@ test('marks disconnected players as timed out and auto-folds after grace window'
     const observerLoginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ username: 'Linus' }),
+      body: JSON.stringify({ username: 'Linus', password: SEED_USER_PASSWORD }),
     });
     const observerLoginPayload = await observerLoginRes.json();
 
     const actorLoginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ username: 'Ada' }),
+      body: JSON.stringify({ username: 'Ada', password: SEED_USER_PASSWORD }),
     });
     const actorLoginPayload = await actorLoginRes.json();
 
@@ -144,7 +144,7 @@ test('forces fold when per-turn action timer expires', async () => {
     const observerLoginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ username: 'Linus' }),
+      body: JSON.stringify({ username: 'Linus', password: SEED_USER_PASSWORD }),
     });
     const observerLoginPayload = await observerLoginRes.json();
 

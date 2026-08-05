@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDefaultServices, createPlatformServer } from '../src/app-server.js';
+import { buildDefaultServices, createPlatformServer, SEED_USER_PASSWORD } from '../src/app-server.js';
 
 test('exposes lobby endpoints and health status', async () => {
   const services = buildDefaultServices();
@@ -32,7 +32,7 @@ test('issues and consumes reconnect tokens through session endpoints', async () 
     const loginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ username: 'Ada' }),
+      body: JSON.stringify({ username: 'Ada', password: SEED_USER_PASSWORD }),
     });
     const loginPayload = await loginRes.json();
 
@@ -82,7 +82,7 @@ test('accepts direct multiplayer action endpoint updates', async () => {
     const loginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ username: 'Ada' }),
+      body: JSON.stringify({ username: 'Ada', password: SEED_USER_PASSWORD }),
     });
     const loginPayload = await loginRes.json();
 
@@ -115,7 +115,7 @@ test('registers players into tournaments and exposes registration list', async (
     const registerUserRes = await fetch(`http://127.0.0.1:${port}/api/auth/register`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ username: 'Ivy' }),
+      body: JSON.stringify({ username: 'Ivy', password: 'ivy-secure-pass' }),
     });
     const registerUserPayload = await registerUserRes.json();
 
@@ -214,7 +214,7 @@ test('supports social clubs, ai hand analysis, and find-my-game matchmaking', as
     const loginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ username: 'Ada' }),
+      body: JSON.stringify({ username: 'Ada', password: SEED_USER_PASSWORD }),
     });
     const loginPayload = await loginRes.json();
 
@@ -278,7 +278,7 @@ test('bootstraps, logs in, and registers auth sessions for app user context', as
     const loginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ username: 'Linus' }),
+      body: JSON.stringify({ username: 'Linus', password: SEED_USER_PASSWORD }),
     });
     const loginPayload = await loginRes.json();
     assert.equal(loginRes.status, 200);
@@ -287,7 +287,7 @@ test('bootstraps, logs in, and registers auth sessions for app user context', as
     const registerRes = await fetch(`http://127.0.0.1:${port}/api/auth/register`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ username: 'RiverFox' }),
+      body: JSON.stringify({ username: 'RiverFox', password: 'riverfox-secure-pass' }),
     });
     const registerPayload = await registerRes.json();
     assert.equal(registerRes.status, 200);
@@ -308,7 +308,7 @@ test('restores stored auth token sessions and revokes them on logout', async () 
     const loginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ username: 'Grace' }),
+      body: JSON.stringify({ username: 'Grace', password: SEED_USER_PASSWORD }),
     });
     const loginPayload = await loginRes.json();
     assert.equal(loginRes.status, 200);
@@ -356,7 +356,7 @@ test('serves high hand leaderboards, history, premium benefits, and shareable hi
     const loginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ username: 'Ada' }),
+      body: JSON.stringify({ username: 'Ada', password: SEED_USER_PASSWORD }),
     });
     const loginPayload = await loginRes.json();
 
