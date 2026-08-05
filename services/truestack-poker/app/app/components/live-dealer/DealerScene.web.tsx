@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import type { TablePreferences } from '../../lib/tablePreferences';
 import type { DealerRenderProfile, DealerSceneCue } from './types';
 
@@ -8,16 +8,7 @@ interface DealerSceneProps {
   preferences: TablePreferences;
 }
 
-export function DealerScene({ cue, renderProfile, preferences }: DealerSceneProps) {
-  const skinLabel =
-    preferences.dealerSkinId === 'classic-casino-dealer'
-      ? 'Classic Casino Dealer'
-      : preferences.dealerSkinId === 'luxury-tournament-dealer'
-        ? 'Luxury Tournament Dealer'
-        : preferences.dealerSkinId === 'modern-professional-dealer'
-          ? 'Modern Professional Dealer'
-          : 'VIP Dealer';
-
+export function DealerScene(_props: DealerSceneProps) {
   return (
     <View style={styles.scene}>
       <View style={styles.skylineBand}>
@@ -328,35 +319,5 @@ const styles = StyleSheet.create({
     height: 5,
     borderRadius: 3,
     backgroundColor: '#D3C7B4',
-  },
-  caption: {
-    position: 'absolute',
-    bottom: 8,
-    alignItems: 'center',
-    gap: 1,
-  },
-  eyebrow: {
-    color: '#6E4F1D',
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1,
-    textShadowColor: 'rgba(255,255,255,0.9)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  title: {
-    color: '#241C15',
-    fontSize: 12,
-    fontWeight: '800',
-    textShadowColor: 'rgba(255,255,255,0.9)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  meta: {
-    color: '#443B31',
-    fontSize: 10,
-    textShadowColor: 'rgba(255,255,255,0.9)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
   },
 });
