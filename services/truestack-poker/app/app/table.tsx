@@ -1,7 +1,7 @@
 import { Link } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
+import { Animated, Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
 import { useAuth } from './lib/auth';
 import { postJson, resolveWebSocketBaseUrl } from './lib/api';
 
@@ -36,11 +36,11 @@ const MAX_SEATS = 6;
 // Seat centre positions as fractions of the felt (slot 0 is the hero, bottom-centre).
 const SEAT_SLOTS = [
   { x: 0.5, y: 0.9 },
-  { x: 0.11, y: 0.66 },
-  { x: 0.09, y: 0.27 },
-  { x: 0.5, y: 0.09 },
-  { x: 0.91, y: 0.27 },
-  { x: 0.89, y: 0.66 },
+  { x: 0.16, y: 0.7 },
+  { x: 0.16, y: 0.28 },
+  { x: 0.5, y: 0.1 },
+  { x: 0.84, y: 0.28 },
+  { x: 0.84, y: 0.7 },
 ];
 
 const SUIT_META: Record<string, { symbol: string; color: string }> = {
@@ -99,6 +99,71 @@ function PlayingCard({ id, faceDown }: { id?: string; faceDown?: boolean }): JSX
   );
 }
 
+// Community cards slide + fade in as they are dealt.
+function DealtCard({ id, index }: { id: string; index: number }): JSX.Element {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(anim, { toValue: 1, duration: 260, delay: index * 70, useNativeDriver: false }).start();
+  }, [anim, id, index]);
+  return (
+    <Animated.View
+      style={{
+        opacity: anim,
+        transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [-16, 0] }) }],
+      }}
+    >
+      <PlayingCard id={id} />
+    </Animated.View>
+  );
+}
+
+// Cyan ring that pulses around the seat whose turn it is.
+function PulseRing(): JSX.Element {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(Animated.timing(anim, { toValue: 1, duration: 1100, useNativeDriver: false }));
+    loop.start();
+    return () => loop.stop();
+  }, [anim]);
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        seatStyles.pulseRing,
+        {
+          opacity: anim.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0.75, 0.15, 0] }),
+          transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.18] }) }],
+        },
+      ]}
+    />
+  );
+}
+
+function ChipStack({ size = 'sm' }: { size?: 'sm' | 'lg' }): JSX.Element {
+  const large = size === 'lg';
+  const w = large ? 26 : 18;
+  const h = large ? 7 : 5;
+  return (
+    <View style={{ width: w, height: h * 3 + 4, justifyContent: 'flex-end' }}>
+      {['#E0576B', '#3E8FFF', '#E0A83B'].map((c, i) => (
+        <View
+          key={c}
+          style={{
+            position: 'absolute',
+            bottom: i * (h - 1),
+            width: w,
+            height: h,
+            borderRadius: h,
+            backgroundColor: c,
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.5)',
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
 interface SeatPodProps {
   player: TablePlayer | null;
   isHero: boolean;
@@ -125,6 +190,7 @@ function SeatPod({ player, isHero, isTurn }: SeatPodProps): JSX.Element {
         : 'Active';
   return (
     <View style={[seatStyles.pod, isHero && seatStyles.heroPod, isTurn && seatStyles.turnPod]}>
+      {isTurn ? <PulseRing /> : null}
       <View style={seatStyles.cardsRow}>
         {!player.folded ? (
           <>
@@ -141,10 +207,15 @@ function SeatPod({ player, isHero, isTurn }: SeatPodProps): JSX.Element {
           </View>
         ) : null}
       </View>
-      <Text style={seatStyles.name} numberOfLines={1}>
-        {isHero ? 'You' : player.name}
-      </Text>
-      <Text style={seatStyles.stack}>${player.stack.toFixed(0)}</Text>
+      <View style={[seatStyles.nameTag, { borderColor: isHero ? '#7ED3FF' : avatarColor(player.name) }]}>
+        <Text style={seatStyles.name} numberOfLines={1}>
+          {isHero ? 'You' : player.name}
+        </Text>
+      </View>
+      <View style={seatStyles.stackRow}>
+        <ChipStack />
+        <Text style={seatStyles.stack}>${player.stack.toFixed(0)}</Text>
+      </View>
       <Text style={[seatStyles.status, isTurn && seatStyles.statusActive]}>{status}</Text>
     </View>
   );
@@ -336,8 +407,8 @@ export default function TableScreen() {
     );
   }
 
-  const tableWidth = Math.min(windowWidth - 32, 520);
-  const tableHeight = Math.round(tableWidth * 0.86);
+  const tableWidth = Math.min(windowWidth - 20, 600);
+  const tableHeight = Math.round(tableWidth * 0.92);
   const opponents = (table?.players ?? []).filter((player) => player.id !== user.userId);
   const seatAssignments = SEAT_SLOTS.slice(0, MAX_SEATS).map((slot, index) => {
     if (index === 0) return { slot, player: mySeat, isHero: true };
@@ -357,6 +428,8 @@ export default function TableScreen() {
         <Text style={styles.stripText}>{connected ? 'LIVE' : 'CONNECTING'}</Text>
         <Text style={styles.stripDivider}>{'\u2022'}</Text>
         <Text style={styles.stripText}>{(table?.currentStreet ?? 'WAITING').toUpperCase()}</Text>
+        <Text style={styles.stripDivider}>{'\u2022'}</Text>
+        <Text style={styles.stripText}>{table?.players.length ?? 0}/{MAX_SEATS} SEATED</Text>
         {countdown !== null ? (
           <>
             <Text style={styles.stripDivider}>{'\u2022'}</Text>
@@ -404,12 +477,15 @@ export default function TableScreen() {
           </View>
 
           <View style={[feltStyles.board, { top: tableHeight * 0.44, width: tableWidth }]}>
-            <View style={feltStyles.potPill}>
-              <Text style={feltStyles.potText}>Pot ${table?.pot.toFixed(2) ?? '0.00'}</Text>
+            <View style={feltStyles.potRow}>
+              <ChipStack size="lg" />
+              <View style={feltStyles.potPill}>
+                <Text style={feltStyles.potText}>Pot ${table?.pot.toFixed(2) ?? '0.00'}</Text>
+              </View>
             </View>
             <View style={feltStyles.boardCards}>
               {communityCards.length > 0
-                ? communityCards.map((card, index) => <PlayingCard key={`${card}-${index}`} id={card} />)
+                ? communityCards.map((card, index) => <DealtCard key={`${card}-${index}`} id={card} index={index} />)
                 : [0, 1, 2, 3, 4].map((slot) => <PlayingCard key={slot} faceDown />)}
             </View>
             <Text style={feltStyles.streetText}>{(table?.currentStreet ?? 'waiting').toUpperCase()}</Text>
@@ -431,10 +507,6 @@ export default function TableScreen() {
             </View>
           ))}
         </View>
-
-        <Text style={feltStyles.tableCaption}>
-          {`6-max \u2022 ${table?.players.length ?? 0}/${MAX_SEATS} seated \u2022 open seats are available to join`}
-        </Text>
       </View>
 
       <View style={styles.audioPanel}>
@@ -496,7 +568,7 @@ const styles = StyleSheet.create({
   centered: { flex: 1, backgroundColor: '#050813', justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
   message: { color: '#D6E3FF', fontSize: 15, textAlign: 'center', lineHeight: 22 },
   screen: { flex: 1, backgroundColor: '#050813' },
-  content: { paddingHorizontal: 16, paddingTop: 44, paddingBottom: 28, gap: 14 },
+  content: { paddingHorizontal: 10, paddingTop: 40, paddingBottom: 24, gap: 12 },
   headerRow: { gap: 4 },
   eyebrow: { color: '#7ED3FF', fontSize: 11, fontWeight: '700', letterSpacing: 1.6 },
   title: { color: '#F5F8FF', fontSize: 24, fontWeight: '800' },
@@ -619,7 +691,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   primaryText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
-  feltWrap: { alignItems: 'center', gap: 8 },
+  feltWrap: { alignItems: 'center', paddingBottom: 46 },
 });
 
 const feltStyles = StyleSheet.create({
@@ -682,6 +754,7 @@ const feltStyles = StyleSheet.create({
     textShadowRadius: 3,
   },
   board: { position: 'absolute', alignItems: 'center', gap: 8 },
+  potRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   potPill: {
     backgroundColor: 'rgba(4,14,10,0.7)',
     borderRadius: 999,
@@ -767,7 +840,10 @@ const seatStyles = StyleSheet.create({
     borderColor: '#0B1220',
   },
   dealerButtonText: { color: '#0B1220', fontSize: 10, fontWeight: '900' },
+  pulseRing: { position: 'absolute', top: -5, left: -5, right: -5, bottom: -5, borderRadius: 18, borderWidth: 2, borderColor: '#7ED3FF' },
+  nameTag: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: 'rgba(6,12,24,0.72)', borderWidth: 1, marginTop: 1 },
   name: { color: '#EAF1FF', fontSize: 12, fontWeight: '700', maxWidth: 74 },
+  stackRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 1 },
   stack: { color: '#7ED3FF', fontSize: 12, fontWeight: '800' },
   status: { color: '#8299BE', fontSize: 10, fontWeight: '600' },
   statusActive: { color: '#7ED3FF' },
