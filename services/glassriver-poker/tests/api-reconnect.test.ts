@@ -248,3 +248,51 @@ test('bootstraps, logs in, and registers auth sessions for app user context', as
     await app.stop();
   }
 });
+
+test('restores stored auth token sessions and revokes them on logout', async () => {
+  const services = buildDefaultServices();
+  const app = createPlatformServer(services);
+  const port = await app.start(0);
+
+  try {
+    const loginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'Grace' }),
+    });
+    const loginPayload = await loginRes.json();
+    assert.equal(loginRes.status, 200);
+
+    const restoreRes = await fetch(`http://127.0.0.1:${port}/api/auth/session`, {
+      headers: {
+        authorization: `Bearer ${loginPayload.authToken}`,
+      },
+    });
+    const restorePayload = await restoreRes.json();
+    assert.equal(restoreRes.status, 200);
+    assert.equal(restorePayload.session.userId, 'p3');
+    assert.equal(restorePayload.source, 'stored-auth-token');
+
+    const logoutRes = await fetch(`http://127.0.0.1:${port}/api/auth/logout`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${loginPayload.authToken}`,
+      },
+    });
+    const logoutPayload = await logoutRes.json();
+    assert.equal(logoutRes.status, 200);
+    assert.equal(logoutPayload.ok, true);
+
+    const fallbackRes = await fetch(`http://127.0.0.1:${port}/api/auth/session`, {
+      headers: {
+        authorization: `Bearer ${loginPayload.authToken}`,
+      },
+    });
+    const fallbackPayload = await fallbackRes.json();
+    assert.equal(fallbackRes.status, 200);
+    assert.equal(fallbackPayload.session.userId, 'p1');
+    assert.equal(fallbackPayload.source, 'bootstrap');
+  } finally {
+    await app.stop();
+  }
+});

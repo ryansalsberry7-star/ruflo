@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { getJson, postJson } from './api';
+import { clearStoredAuthToken, readStoredAuthToken, writeStoredAuthToken } from './secure-session';
 
 export interface AuthenticatedUser {
   userId: string;
@@ -16,13 +17,20 @@ interface AuthContextValue {
   error: string | null;
   login: (input: { userId?: string; username?: string }) => Promise<void>;
   register: (input: { userId?: string; username: string }) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
+}
+
+interface AuthSessionResponse {
+  session: AuthenticatedUser;
+  authToken: string;
+  authTokenExpiresAt: number;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
+  const [authToken, setAuthToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,12 +39,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async function bootstrap(): Promise<void> {
       try {
-        const response = await getJson<{ session: AuthenticatedUser }>('/api/auth/session');
+        const storedToken = await readStoredAuthToken();
+        const response = await getJson<AuthSessionResponse>('/api/auth/session', {
+          headers: storedToken ? { authorization: `Bearer ${storedToken}` } : undefined,
+        });
         if (!active) return;
         setUser(response.session);
+        setAuthToken(response.authToken);
+        await writeStoredAuthToken(response.authToken);
       } catch (bootstrapError) {
         if (!active) return;
         setError(bootstrapError instanceof Error ? bootstrapError.message : 'Failed to load session.');
+        await clearStoredAuthToken();
       } finally {
         if (active) setLoading(false);
       }
@@ -53,8 +67,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const response = await postJson<{ session: AuthenticatedUser }>('/api/auth/login', input);
+      const response = await postJson<AuthSessionResponse>('/api/auth/login', input);
       setUser(response.session);
+      setAuthToken(response.authToken);
+      await writeStoredAuthToken(response.authToken);
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : 'Login failed.');
       throw loginError;
@@ -67,8 +83,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const response = await postJson<{ session: AuthenticatedUser }>('/api/auth/register', input);
+      const response = await postJson<AuthSessionResponse>('/api/auth/register', input);
       setUser(response.session);
+      setAuthToken(response.authToken);
+      await writeStoredAuthToken(response.authToken);
     } catch (registerError) {
       setError(registerError instanceof Error ? registerError.message : 'Registration failed.');
       throw registerError;
@@ -77,7 +95,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  function logout(): void {
+  async function logout(): Promise<void> {
+    if (authToken) {
+      try {
+        await postJson('/api/auth/logout', {}, { headers: { authorization: `Bearer ${authToken}` } });
+      } catch {
+        // Clear local state even if remote revocation fails.
+      }
+    }
+
+    await clearStoredAuthToken();
+    setAuthToken(null);
     setUser(null);
   }
 

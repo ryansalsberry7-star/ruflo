@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from './lib/auth';
 
 export default function HomeScreen() {
-  const { user, loading } = useAuth();
+  const { user, loading, logout } = useAuth();
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -29,6 +29,11 @@ export default function HomeScreen() {
             </Pressable>
           </Link>
         </View>
+        {user ? (
+          <Pressable style={styles.inlineButton} onPress={() => void logout()}>
+            <Text style={styles.inlineButtonText}>Sign out on this device</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       <View style={styles.card}>

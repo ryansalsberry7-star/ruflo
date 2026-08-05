@@ -146,10 +146,16 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
   }
 
   if (method === 'GET' && pathname === '/api/auth/session') {
-    const defaultUser = services.users.getUser('p1');
+    const authToken = readBearerToken(req);
+    const tokenSession = authToken ? services.sessions.resolveAuthToken(authToken) : null;
+    const currentUser = tokenSession ? services.users.getUser(tokenSession.userId) : services.users.getUser('p1');
+    const durableAuth = tokenSession ?? services.sessions.issueAuthToken(currentUser.id);
+
     sendJson(res, 200, {
-      session: buildAuthSessionPayload(services, defaultUser.id, defaultUser.username),
-      source: 'bootstrap',
+      session: buildAuthSessionPayload(services, currentUser.id, currentUser.username),
+      authToken: durableAuth.token,
+      authTokenExpiresAt: durableAuth.expiresAt,
+      source: tokenSession ? 'stored-auth-token' : 'bootstrap',
     });
     return;
   }
@@ -172,8 +178,12 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
       return;
     }
 
+    const authSession = services.sessions.issueAuthToken(user.id);
+
     sendJson(res, 200, {
       session: buildAuthSessionPayload(services, user.id, user.username),
+      authToken: authSession.token,
+      authTokenExpiresAt: authSession.expiresAt,
     });
     return;
   }
@@ -189,11 +199,24 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
     const requestedUserId = String(body.userId ?? '').trim();
     const userId = createAvailableUserId(services, requestedUserId || username);
     const user = services.users.createUser(userId, username);
+    const authSession = services.sessions.issueAuthToken(user.id);
 
     sendJson(res, 200, {
       session: buildAuthSessionPayload(services, user.id, user.username),
+      authToken: authSession.token,
+      authTokenExpiresAt: authSession.expiresAt,
       created: true,
     });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/api/auth/logout') {
+    const authToken = readBearerToken(req);
+    if (authToken) {
+      services.sessions.revokeAuthToken(authToken);
+    }
+
+    sendJson(res, 200, { ok: true });
     return;
   }
 
@@ -607,6 +630,14 @@ function buildAuthSessionPayload(services: PlatformServices, userId: string, use
     username,
     trust: services.trust.getPlayerTrust(userId),
   };
+}
+
+function readBearerToken(req: IncomingMessage): string | null {
+  const header = req.headers.authorization;
+  if (!header) return null;
+  const [scheme, token] = header.split(' ');
+  if (scheme?.toLowerCase() !== 'bearer' || !token) return null;
+  return token.trim();
 }
 
 function createAvailableUserId(services: PlatformServices, raw: string): string {
