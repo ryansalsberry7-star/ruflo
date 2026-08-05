@@ -1,4 +1,4 @@
-# TRUE STACK Poker: Real Money Poker
+# TRUE STACK Poker
 
 TRUE STACK Poker is a premium, zero-rake poker experience built as a mobile-first product. The current implementation includes:
 
