@@ -82,7 +82,7 @@ export class PokerService extends EventEmitter implements GameHostProvider {
     super();
   }
 
-  createCashTable(tableId: string, stakeId: string, players: Array<{ id: string; name: string; stack: number }>, isPrivate = false): TableState {
+  createCashTable(tableId: string, stakeId: string, players: Array<{ id: string; name: string; stack: number; isBot?: boolean }>, isPrivate = false): TableState {
     const stake = STAKE_LEVELS.find((entry) => entry.id === stakeId);
     if (!stake) throw new Error('Unknown stake level');
 
@@ -100,7 +100,7 @@ export class PokerService extends EventEmitter implements GameHostProvider {
     return table;
   }
 
-  joinTable(tableId: string, player: { id: string; name: string; stack: number }): TableState {
+  joinTable(tableId: string, player: { id: string; name: string; stack: number; isBot?: boolean }): TableState {
     const table = this.getTable(tableId);
     const existing = table.players.find((entry) => entry.id === player.id);
     if (existing) return table;
@@ -128,6 +128,17 @@ export class PokerService extends EventEmitter implements GameHostProvider {
     this.tables.set(tableId, next);
     if (next.actionHistory.length === 0 && next.currentStreet === 'preflop') {
       this.startDealerHandForTable(tableId);
+    }
+
+    // Blinds are otherwise posted only by createTable and by the redeal after a
+    // settlement. A table that drained to fewer than two seats and then refilled would
+    // sit at currentBet 0 forever, so every street checks through to a zero pot. Post
+    // them here once the table is playable again; the currentBet guard prevents a
+    // double-post when a hand is already live.
+    if (next.players.length >= 2 && next.actionHistory.length === 0 && next.currentStreet === 'preflop' && next.currentBet === 0) {
+      const withBlinds = postBlinds(this.getTable(tableId));
+      this.tables.set(tableId, withBlinds);
+      return withBlinds;
     }
 
     return next;

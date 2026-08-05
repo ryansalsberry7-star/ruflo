@@ -29,6 +29,12 @@ export interface PlayerSeat {
   isBigBlind: boolean;
   /** Chips this player has committed during the current betting round (street). Resets each street. */
   streetContribution: number;
+  /**
+   * Development-only simulated player. The product claims no house players, so this is
+   * carried on the seat itself and surfaced to clients rather than inferred from a name,
+   * making a bot impossible to disguise as a human at the table.
+   */
+  isBot?: boolean;
 }
 
 export interface TableState {
@@ -57,7 +63,7 @@ export interface CreateTableInput {
   id: string;
   smallBlind: number;
   bigBlind: number;
-  players: Array<{ id: string; name: string; stack: number }>;
+  players: Array<{ id: string; name: string; stack: number; isBot?: boolean }>;
   deck?: Card[];
 }
 

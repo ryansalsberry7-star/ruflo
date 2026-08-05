@@ -240,6 +240,12 @@ function SeatPod({
             {isHero ? 'You' : player.name}
           </Text>
         </View>
+        {/* Simulated seats are labelled at the table so they never read as human. */}
+        {player.isBot ? (
+          <View style={seatStyles.botTag}>
+            <Text style={seatStyles.botTagText}>BOT</Text>
+          </View>
+        ) : null}
         <View style={seatStyles.stackRow}>
           <ChipStack />
           <Text style={seatStyles.stack}>${player.stack.toFixed(0)}</Text>
@@ -1238,6 +1244,16 @@ const cardStyles = StyleSheet.create({
 });
 
 const seatStyles = StyleSheet.create({
+  botTag: {
+    backgroundColor: '#2E2A46',
+    borderColor: '#6E67A8',
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    marginTop: 2,
+  },
+  botTagText: { color: '#B9B2E8', fontSize: 8, fontWeight: '900', letterSpacing: 0.8 },
   lastActionPill: {
     backgroundColor: '#3A1E22',
     borderColor: '#8A6A45',

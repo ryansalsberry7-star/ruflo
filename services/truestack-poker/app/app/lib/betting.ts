@@ -18,6 +18,8 @@ export interface TablePlayer {
   isBigBlind: boolean;
   /** Chips committed by this player on the current street. */
   streetContribution: number;
+  /** Development-only simulated opponent. Badged at the seat so it never reads as human. */
+  isBot?: boolean;
 }
 
 export interface TableState {

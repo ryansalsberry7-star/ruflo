@@ -4,6 +4,7 @@ import { URL } from 'node:url';
 import { actionEnvelopeSchema } from './contracts.js';
 import { attachRealtimeGateway } from './realtime/ws-gateway.js';
 import { AnalyticsService } from './services/analytics-service.js';
+import { BotService } from './services/bot-service.js';
 import { CoachService } from './services/coach-service.js';
 import { ComplianceService } from './services/compliance-service.js';
 import { CommunityService } from './services/community-service.js';
@@ -22,6 +23,8 @@ import { hashPassword, isPasswordStrongEnough } from './services/password-servic
 
 export interface PlatformServices {
   poker: GameHostProvider;
+  /** Development-only simulated opponents. Null unless TRUESTACK_DEV_BOTS is set. */
+  bots: BotService | null;
   wallet: WalletService;
   payment: PaymentService;
   compliance: ComplianceService;
@@ -62,6 +65,31 @@ export interface BuildServicesOptions {
  * flag cannot silently authorize real players. A real deployment wires a
  * vendor-backed verifier (Radar, GeoComply) here instead.
  */
+/**
+ * Build the dev bot table when TRUESTACK_DEV_BOTS is set.
+ *
+ * The value is the number of simulated seats (or "true" for a default of 3). Bots buy in,
+ * the driver starts polling for their turns, and nothing happens at all when the flag is
+ * absent -- which is every non-local environment.
+ */
+function resolveDevBots(poker: PokerService): BotService | null {
+  const raw = process.env.TRUESTACK_DEV_BOTS?.trim();
+  if (!raw || raw === 'false' || raw === '0') return null;
+  if (process.env.NODE_ENV === 'production') return null;
+
+  const requested = raw === 'true' ? 3 : Number.parseInt(raw, 10);
+  const count = Number.isFinite(requested) ? Math.max(1, Math.min(requested, 6)) : 3;
+
+  const bots = new BotService(poker);
+  // The seeded demo accounts have no client attached, so a turn landing on one of them
+  // stalls the table. Clear them out first and let bots drive; a real player takes a seat
+  // through the UI.
+  bots.clearIdleHumanSeats('cash-aurora');
+  bots.seatBots('cash-aurora', count);
+  bots.start();
+  return bots;
+}
+
 function resolveConfiguredLocationVerifier(): LocationVerifier | undefined {
   const devJurisdiction = process.env.TRUESTACK_DEV_TRUSTED_JURISDICTION?.trim();
   if (!devJurisdiction) return undefined;
@@ -130,8 +158,14 @@ export function buildDefaultServices(options: BuildServicesOptions = {}): Platfo
     initialUsers.map((entry) => ({ id: entry.id, name: entry.username, stack: 1000 }))
   );
 
+  // Simulated opponents are strictly opt-in for local testing. BotService itself refuses
+  // to construct under NODE_ENV=production, so this flag cannot enable them on a real
+  // deployment even if it were set there by accident.
+  const bots = resolveDevBots(poker);
+
   return {
     poker,
+    bots,
     wallet,
     payment,
     compliance,
@@ -430,7 +464,16 @@ async function routeRequest(
       fairPlay: {
         handVerification: 'enabled',
         antiCheat: ['bot-detection', 'multi-account-monitoring', 'collusion-monitoring', 'suspicious-gameplay-monitoring'],
-        noHousePlayers: true,
+        // Must reflect reality: claiming no house players while dev bots are seated would
+        // make the transparency endpoint lie. It reports true only when none are running.
+        noHousePlayers: services.bots === null,
+        ...(services.bots
+          ? {
+              simulatedOpponentsActive: true,
+              simulatedOpponentsNote:
+                'This environment is running development-only simulated opponents. Seats marked isBot are not human players.',
+            }
+          : {}),
       },
     });
     return;
@@ -935,6 +978,42 @@ async function routeRequest(
       reconnectTokenExpiresAt: reconnect.expiresAt,
     });
     return;
+  }
+
+  // Development-only bot controls. Absent entirely unless TRUESTACK_DEV_BOTS is set, so
+  // a real deployment has no route that can seat a house player.
+  if (pathname.startsWith('/api/dev/bots')) {
+    if (!services.bots) {
+      sendJson(res, 404, {
+        error: 'Simulated opponents are disabled. Start the server with TRUESTACK_DEV_BOTS=3 to enable them locally.',
+      });
+      return;
+    }
+
+    const tableId = String(requestUrl.searchParams.get('tableId') ?? 'cash-aurora');
+
+    if (method === 'GET') {
+      sendJson(res, 200, { tableId, bots: services.bots.listSeatedBots(tableId), simulated: true });
+      return;
+    }
+
+    if (method === 'POST') {
+      const body = await readJsonBody(req);
+      const count = Number(body.count ?? 3);
+      const buyIn = Number(body.buyIn ?? 100);
+      const seated = services.bots.seatBots(
+        typeof body.tableId === 'string' ? body.tableId : tableId,
+        Number.isFinite(count) ? count : 3,
+        Number.isFinite(buyIn) ? buyIn : 100
+      );
+      sendJson(res, 200, { seated, simulated: true });
+      return;
+    }
+
+    if (method === 'DELETE') {
+      sendJson(res, 200, { removed: services.bots.removeBots(tableId) });
+      return;
+    }
   }
 
   if (method === 'POST' && pathname.startsWith('/api/tables/') && pathname.endsWith('/leave')) {
