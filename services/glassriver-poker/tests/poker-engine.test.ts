@@ -81,6 +81,21 @@ test('applies folds and tracks action history', () => {
   assert.equal(updated.actionHistory.length, 1);
 });
 
+test('rejects out-of-turn actions and wagers above stack', () => {
+  const table = createTable({
+    id: 'table-2b',
+    smallBlind: 5,
+    bigBlind: 10,
+    players: [
+      { id: 'p1', name: 'Ada', stack: 1000 },
+      { id: 'p2', name: 'Linus', stack: 1000 },
+    ],
+  });
+
+  assert.throws(() => applyAction(table, { playerId: 'p2', type: 'call', amount: 10 }), /out of turn/i);
+  assert.throws(() => applyAction(table, { playerId: 'p1', type: 'bet', amount: 5000 }), /insufficient stack/i);
+});
+
 test('deals street cards and evaluates a hand rank', () => {
   let table = createTable({ id: 'table-3', smallBlind: 5, bigBlind: 10, players: [{ id: 'p1', name: 'Ada', stack: 1000 }], deck: [...deterministicDeck] as any });
   table = dealFlop(table);

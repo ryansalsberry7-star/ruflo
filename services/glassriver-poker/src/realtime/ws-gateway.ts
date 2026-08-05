@@ -99,7 +99,14 @@ export function attachRealtimeGateway(options: GatewayOptions) {
             return;
           }
 
-          const userId = String(message.payload?.userId ?? 'guest');
+          const authToken = typeof message.payload?.authToken === 'string' ? message.payload.authToken : null;
+          const authSession = authToken ? services.sessions.resolveAuthToken(authToken) : null;
+          if (!authSession) {
+            socket.send(JSON.stringify({ event: 'error', payload: { message: 'Authentication token required.' } }));
+            return;
+          }
+
+          const userId = authSession.userId;
           const tableId = typeof message.payload?.tableId === 'string' ? message.payload.tableId : null;
           if (tableId) {
             clearPendingDisconnect(pendingDisconnects, makePresenceKey(userId, tableId));
@@ -147,33 +154,6 @@ export function attachRealtimeGateway(options: GatewayOptions) {
           });
           broadcastTable(clients, tableId, { event: 'table_update', payload: { table } });
           scheduleTurnTimeout(tableTurnTimers, services, clients, tableId, turnActionMs);
-          return;
-        }
-
-        if (message.event === 'advance_street') {
-          const tableId = String(message.payload?.tableId ?? '');
-          const table = services.poker.advanceStreet(tableId);
-          broadcastTable(clients, tableId, { event: 'street_update', payload: { table } });
-          scheduleTurnTimeout(tableTurnTimers, services, clients, tableId, turnActionMs);
-          return;
-        }
-
-        if (message.event === 'showdown') {
-          const tableId = String(message.payload?.tableId ?? '');
-          const settled = services.poker.settleHand(tableId);
-          for (const payout of settled.payouts) {
-            services.wallet.creditWinnings(payout.playerId, payout.amount, tableId);
-            services.analytics.trackHand(payout.playerId, 120, settled.totalPot, payout.amount > 0);
-            services.community.recordSessionSummary(payout.playerId, {
-              durationMinutes: 20,
-              handsPlayed: 1,
-              netProfit: payout.amount,
-              biggestPot: settled.totalPot,
-            });
-            services.trust.recordCompletedSession(payout.playerId, true);
-          }
-          broadcastTable(clients, tableId, { event: 'hand_settled', payload: settled });
-          clearTableTurnTimer(tableTurnTimers, tableId);
           return;
         }
 

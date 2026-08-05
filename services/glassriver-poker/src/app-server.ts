@@ -34,6 +34,7 @@ export interface PlatformServerOptions {
     disconnectGraceMs?: number;
     turnActionMs?: number;
   };
+  adminKey?: string;
 }
 
 export function buildDefaultServices(): PlatformServices {
@@ -83,9 +84,10 @@ export function buildDefaultServices(): PlatformServices {
 }
 
 export function createPlatformServer(services: PlatformServices, options: PlatformServerOptions = {}) {
+  const adminKey = options.adminKey ?? process.env.GLASSRIVER_ADMIN_KEY?.trim() ?? null;
   const server = createServer(async (req, res) => {
     try {
-      await routeRequest(req, res, services);
+      await routeRequest(req, res, services, adminKey);
     } catch (error) {
       sendJson(res, 500, { error: error instanceof Error ? error.message : 'Unexpected server error' });
     }
@@ -133,7 +135,7 @@ export function createPlatformServer(services: PlatformServices, options: Platfo
   };
 }
 
-async function routeRequest(req: IncomingMessage, res: ServerResponse, services: PlatformServices): Promise<void> {
+async function routeRequest(req: IncomingMessage, res: ServerResponse, services: PlatformServices, adminKey: string | null): Promise<void> {
   const method = req.method ?? 'GET';
   const requestUrl = new URL(req.url ?? '/', 'http://localhost');
   const pathname = requestUrl.pathname;
@@ -151,14 +153,23 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
   if (method === 'GET' && pathname === '/api/auth/session') {
     const authToken = readBearerToken(req);
     const tokenSession = authToken ? services.sessions.resolveAuthToken(authToken) : null;
-    const currentUser = tokenSession ? services.users.getUser(tokenSession.userId) : services.users.getUser('p1');
-    const durableAuth = tokenSession ?? services.sessions.issueAuthToken(currentUser.id);
+    if (!tokenSession) {
+      sendJson(res, 200, {
+        session: null,
+        authToken: null,
+        authTokenExpiresAt: null,
+        source: 'anonymous',
+      });
+      return;
+    }
+
+    const currentUser = services.users.getUser(tokenSession.userId);
 
     sendJson(res, 200, {
       session: buildAuthSessionPayload(services, currentUser.id, currentUser.username),
-      authToken: durableAuth.token,
-      authTokenExpiresAt: durableAuth.expiresAt,
-      source: tokenSession ? 'stored-auth-token' : 'bootstrap',
+      authToken: tokenSession.token,
+      authTokenExpiresAt: tokenSession.expiresAt,
+      source: 'stored-auth-token',
     });
     return;
   }
@@ -250,6 +261,11 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
 
   if (method === 'GET' && pathname.startsWith('/api/high-hands/history/')) {
     const userId = pathname.split('/')[4] ?? '';
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor || actor.id !== userId) {
+      sendJson(res, 403, { error: 'Authorized access to personal high-hand history is required.' });
+      return;
+    }
     sendJson(res, 200, { userId, history: services.highHands.getUserHistory(userId) });
     return;
   }
@@ -262,6 +278,11 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
 
   if (method === 'GET' && pathname.startsWith('/api/high-hands/premium/')) {
     const userId = pathname.split('/')[4] ?? '';
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor || actor.id !== userId) {
+      sendJson(res, 403, { error: 'Authorized access to premium rewards is required.' });
+      return;
+    }
     sendJson(res, 200, { premium: services.highHands.getPremiumOverview(userId) });
     return;
   }
@@ -329,6 +350,11 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
 
   if (method === 'GET' && pathname.startsWith('/api/wallet/')) {
     const userId = pathname.split('/')[3] ?? '';
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor || actor.id !== userId) {
+      sendJson(res, 403, { error: 'Authorized access to wallet data is required.' });
+      return;
+    }
     sendJson(res, 200, { wallet: services.wallet.getWallet(userId) });
     return;
   }
@@ -341,6 +367,10 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
   }
 
   if (method === 'POST' && pathname.startsWith('/api/trust/') && pathname.endsWith('/verify-human')) {
+    if (!hasAdminAccess(req, adminKey)) {
+      sendJson(res, 403, { error: 'Admin authorization required.' });
+      return;
+    }
     const userId = pathname.split('/')[3] ?? '';
     const trust = services.trust.markVerifiedHuman(userId);
     sendJson(res, 200, { trust });
@@ -348,6 +378,10 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
   }
 
   if (method === 'POST' && pathname.startsWith('/api/trust/') && pathname.endsWith('/security-status')) {
+    if (!hasAdminAccess(req, adminKey)) {
+      sendJson(res, 403, { error: 'Admin authorization required.' });
+      return;
+    }
     const userId = pathname.split('/')[3] ?? '';
     const body = await readJsonBody(req);
     const status = String(body.status ?? 'unverified') as 'unverified' | 'email-verified' | 'id-verified' | 'enhanced';
@@ -357,6 +391,10 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
   }
 
   if (method === 'POST' && pathname.startsWith('/api/trust/') && pathname.endsWith('/anti-cheat-signal')) {
+    if (!hasAdminAccess(req, adminKey)) {
+      sendJson(res, 403, { error: 'Admin authorization required.' });
+      return;
+    }
     const userId = pathname.split('/')[3] ?? '';
     const body = await readJsonBody(req);
     const category = String(body.category ?? 'suspicious-timing') as
@@ -373,12 +411,20 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
   }
 
   if (method === 'GET' && pathname === '/api/trust/flagged') {
+    if (!hasAdminAccess(req, adminKey)) {
+      sendJson(res, 403, { error: 'Admin authorization required.' });
+      return;
+    }
     const minSignals = Number(requestUrl.searchParams.get('minSignals') ?? '2');
     sendJson(res, 200, { flagged: services.trust.listFlaggedPlayers(Number.isFinite(minSignals) ? minSignals : 2) });
     return;
   }
 
   if (method === 'POST' && pathname === '/api/trust/collusion-assessment') {
+    if (!hasAdminAccess(req, adminKey)) {
+      sendJson(res, 403, { error: 'Admin authorization required.' });
+      return;
+    }
     const body = await readJsonBody(req);
     const assessment = services.trust.assessCollusion({
       userA: String(body.userA ?? ''),
@@ -393,6 +439,11 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
 
   if (method === 'POST' && pathname.startsWith('/api/profiles/') && pathname.endsWith('/follow')) {
     const userId = pathname.split('/')[3] ?? '';
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor || actor.id !== userId) {
+      sendJson(res, 403, { error: 'Authorized access to follow players is required.' });
+      return;
+    }
     const body = await readJsonBody(req);
     const targetUserId = String(body.targetUserId ?? '');
     const profile = services.community.followPlayer(userId, targetUserId);
@@ -402,6 +453,11 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
 
   if (method === 'POST' && pathname.startsWith('/api/profiles/') && pathname.endsWith('/customization')) {
     const userId = pathname.split('/')[3] ?? '';
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor || actor.id !== userId) {
+      sendJson(res, 403, { error: 'Authorized access to profile customization is required.' });
+      return;
+    }
     const body = await readJsonBody(req);
     const customizationUpdate: Partial<ReturnType<typeof services.community.getProfile>['customization']> = {};
     if (typeof body.cardBack === 'string') customizationUpdate.cardBack = body.cardBack;
@@ -433,9 +489,14 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
   }
 
   if (method === 'POST' && pathname === '/api/social/clubs') {
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor) {
+      sendJson(res, 401, { error: 'Authentication required.' });
+      return;
+    }
     const body = await readJsonBody(req);
     const club = services.community.createClub({
-      ownerId: String(body.ownerId ?? ''),
+      ownerId: actor.id,
       name: String(body.name ?? 'Untitled Club'),
       description: String(body.description ?? ''),
       isPrivate: Boolean(body.isPrivate ?? false),
@@ -446,8 +507,12 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
 
   if (method === 'POST' && pathname.startsWith('/api/social/clubs/') && pathname.endsWith('/join')) {
     const clubId = pathname.split('/')[4] ?? '';
-    const body = await readJsonBody(req);
-    const userId = String(body.userId ?? '');
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor) {
+      sendJson(res, 401, { error: 'Authentication required.' });
+      return;
+    }
+    const userId = actor.id;
     const club = services.community.joinClub(clubId, userId);
     sendJson(res, 200, { club });
     return;
@@ -455,12 +520,22 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
 
   if (method === 'GET' && pathname.startsWith('/api/session-tracker/')) {
     const userId = pathname.split('/')[3] ?? '';
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor || actor.id !== userId) {
+      sendJson(res, 403, { error: 'Authorized access to session analytics is required.' });
+      return;
+    }
     sendJson(res, 200, { tracker: services.community.getSessionTracker(userId) });
     return;
   }
 
   if (method === 'GET' && pathname.startsWith('/api/coach/') && pathname.endsWith('/session-review')) {
     const userId = pathname.split('/')[3] ?? '';
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor || actor.id !== userId) {
+      sendJson(res, 403, { error: 'Authorized access to coaching review is required.' });
+      return;
+    }
     sendJson(res, 200, { review: services.coach.generateSessionReview(userId) });
     return;
   }
@@ -469,6 +544,11 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
     const handId = pathname.split('/')[4] ?? '';
     const userId = String(requestUrl.searchParams.get('userId') ?? '');
     const tableId = String(requestUrl.searchParams.get('tableId') ?? '');
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor || actor.id !== userId) {
+      sendJson(res, 403, { error: 'Authorized access to hand analysis is required.' });
+      return;
+    }
     if (!userId || !tableId) {
       sendJson(res, 400, { error: 'userId and tableId are required query params' });
       return;
@@ -492,8 +572,13 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
   }
 
   if (method === 'POST' && pathname === '/api/lobby/find-my-game') {
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor) {
+      sendJson(res, 401, { error: 'Authentication required.' });
+      return;
+    }
     const body = await readJsonBody(req);
-    const userId = String(body.userId ?? '');
+    const userId = actor.id;
     const stakePreference = String(body.stakes ?? 'all');
     const speedPreference = String(body.speed ?? 'all');
     const tableSizePreference = Number(body.tableSize ?? 6);
@@ -540,9 +625,14 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
 
   if (method === 'POST' && pathname.startsWith('/api/tables/') && pathname.endsWith('/join')) {
     const tableId = pathname.split('/')[3] ?? '';
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor) {
+      sendJson(res, 401, { error: 'Authentication required.' });
+      return;
+    }
     const body = await readJsonBody(req);
-    const userId = String(body.userId ?? 'guest');
-    const username = String(body.username ?? userId);
+    const userId = actor.id;
+    const username = actor.username;
     const buyIn = Number(body.buyIn ?? 0);
 
     services.users.createUser(userId, username);
@@ -567,8 +657,13 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
 
   if (method === 'POST' && pathname.startsWith('/api/tables/') && pathname.endsWith('/action')) {
     const tableId = pathname.split('/')[3] ?? '';
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor) {
+      sendJson(res, 401, { error: 'Authentication required.' });
+      return;
+    }
     const body = await readJsonBody(req);
-    const userId = String(body.userId ?? 'guest');
+    const userId = actor.id;
     const action = actionEnvelopeSchema.parse(body.action);
     const table = services.poker.applyPlayerAction(tableId, userId, action.type, action.amount ?? 0);
     services.coach.recordAction({
@@ -583,9 +678,13 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
 
   if (method === 'POST' && pathname.startsWith('/api/tournaments/') && pathname.endsWith('/register')) {
     const tournamentId = pathname.split('/')[3] ?? '';
-    const body = await readJsonBody(req);
-    const userId = String(body.userId ?? 'guest');
-    const username = String(body.username ?? userId);
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor) {
+      sendJson(res, 401, { error: 'Authentication required.' });
+      return;
+    }
+    const userId = actor.id;
+    const username = actor.username;
 
     services.users.createUser(userId, username);
     const registration = services.poker.registerTournament(tournamentId, userId);
@@ -594,8 +693,13 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
   }
 
   if (method === 'POST' && pathname === '/api/sessions/token') {
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor) {
+      sendJson(res, 401, { error: 'Authentication required.' });
+      return;
+    }
     const body = await readJsonBody(req);
-    const userId = String(body.userId ?? 'guest');
+    const userId = actor.id;
     const tableId = String(body.tableId ?? '');
     if (!tableId) {
       sendJson(res, 400, { error: 'tableId is required' });
@@ -681,4 +785,21 @@ function createAvailableUserId(services: PlatformServices, raw: string): string 
     counter += 1;
   }
   return candidate;
+}
+
+function readAuthenticatedUser(req: IncomingMessage, services: PlatformServices): { id: string; username: string } | null {
+  const authToken = readBearerToken(req);
+  const session = authToken ? services.sessions.resolveAuthToken(authToken) : null;
+  if (!session) {
+    return null;
+  }
+
+  const user = services.users.getUser(session.userId);
+  return { id: user.id, username: user.username };
+}
+
+function hasAdminAccess(req: IncomingMessage, adminKey: string | null): boolean {
+  if (!adminKey) return false;
+  const header = req.headers['x-admin-key'];
+  return typeof header === 'string' && header === adminKey;
 }

@@ -13,6 +13,16 @@ function resolveApiBaseUrl(): string {
 
 const API_BASE_URL = resolveApiBaseUrl();
 
+function resolveWebSocketBaseUrl(): string {
+  if (API_BASE_URL.startsWith('https://')) {
+    return API_BASE_URL.replace('https://', 'wss://');
+  }
+  if (API_BASE_URL.startsWith('http://')) {
+    return API_BASE_URL.replace('http://', 'ws://');
+  }
+  return API_BASE_URL;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -42,4 +52,4 @@ export function postJson<T>(path: string, body: unknown, init?: RequestInit): Pr
   });
 }
 
-export { API_BASE_URL };
+export { API_BASE_URL, resolveWebSocketBaseUrl };

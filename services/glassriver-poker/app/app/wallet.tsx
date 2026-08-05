@@ -7,32 +7,33 @@ export default function WalletScreen() {
       <View style={styles.header}>
         <Text style={styles.eyebrow}>WALLET</Text>
         <Text style={styles.title}>Virtual credits</Text>
-        <Text style={styles.subtitle}>Transparent fees outside poker pots. Zero rake always.</Text>
+        <Text style={styles.subtitle}>Play-money wallet preview. Transparent fees outside poker pots. Zero rake always.</Text>
       </View>
 
       <View style={styles.card}>
         <Text style={styles.balance}>$1,000.00</Text>
-        <Text style={styles.subtext}>Available chips • Tournament tickets • Bonuses</Text>
+        <Text style={styles.subtext}>Available demo chips • Tournament tickets • Bonuses</Text>
         <View style={styles.tagRow}>
-          <Text style={styles.tag}>Instant deposit fee: 3.5%</Text>
-          <Text style={styles.tag}>Standard deposit fee: 1%</Text>
+          <Text style={styles.tag}>Preview fee model only</Text>
+          <Text style={styles.tag}>No real-money processing in this build</Text>
         </View>
       </View>
 
       <View style={styles.actionsRow}>
         <Pressable style={styles.actionButton}>
-          <Text style={styles.actionText}>Deposit</Text>
+          <Text style={styles.actionText}>Add demo chips</Text>
         </Pressable>
         <Pressable style={styles.actionButton}>
-          <Text style={styles.actionText}>Withdraw</Text>
+          <Text style={styles.actionText}>Reward tickets</Text>
         </Pressable>
       </View>
 
       <View style={styles.transactionList}>
         <Text style={styles.sectionTitle}>Recent ledger entries</Text>
-        <Text style={styles.row}>• Deposit: $150.00</Text>
+        <Text style={styles.row}>• Demo chip grant: $150.00</Text>
         <Text style={styles.row}>• Buy-in: $100.00</Text>
         <Text style={styles.row}>• Win: $240.00</Text>
+        <Text style={styles.row}>• No real-money deposits or withdrawals are available in this version.</Text>
       </View>
 
       <Link href="/transaction-history" asChild>

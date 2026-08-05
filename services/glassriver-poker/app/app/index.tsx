@@ -41,7 +41,7 @@ export default function HomeScreen() {
       <View style={styles.hero}>
         <Text style={styles.eyebrow}>ZERO-RAKE POKER</Text>
         <Text style={styles.title}>GlassRiver</Text>
-        <Text style={styles.subtitle}>No house edge. No percentage from pots. Premium dealer-led table experience.</Text>
+        <Text style={styles.subtitle}>No house edge. No percentage from pots. Premium dealer-led play-money table experience for this App Store build.</Text>
       </View>
 
       <View style={styles.sessionCard}>
@@ -72,6 +72,7 @@ export default function HomeScreen() {
         <Text style={styles.metric}>42 active tables • 516 players online</Text>
         <Text style={styles.metric}>Median action latency: 68ms</Text>
         <Text style={styles.metric}>Dealer mode: server authoritative</Text>
+        <Text style={styles.metric}>Environment: play-money beta, real-money mode disabled</Text>
       </View>
 
       <View style={styles.card}>
@@ -120,7 +121,7 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.footerRow}>
-        <Text style={styles.footerText}>No rake • No house edge • Verified fair-play logs</Text>
+        <Text style={styles.footerText}>Play-money beta • No rake • No house edge • Verified fair-play logs</Text>
       </View>
     </ScrollView>
   );

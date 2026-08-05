@@ -35,6 +35,9 @@ export default function SettingsScreen() {
         <Text style={styles.line}>• App Store bundle identifier configured</Text>
         <Text style={styles.line}>• Encryption declaration set for submission metadata</Text>
         <Text style={styles.line}>• EAS production profile prepared</Text>
+        <Text style={styles.line}>• Review build wording clarifies play-money only operation</Text>
+        <Text style={styles.line}>• Privacy and terms screens disclose session, telemetry, and sharing behavior</Text>
+        <Text style={styles.line}>• Trust and moderation routes are server-gated for internal use only</Text>
       </View>
     </ScrollView>
   );

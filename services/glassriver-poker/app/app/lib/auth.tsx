@@ -13,6 +13,7 @@ export interface AuthenticatedUser {
 
 interface AuthContextValue {
   user: AuthenticatedUser | null;
+  authToken: string | null;
   loading: boolean;
   error: string | null;
   login: (input: { userId?: string; username?: string }) => Promise<void>;
@@ -21,9 +22,9 @@ interface AuthContextValue {
 }
 
 interface AuthSessionResponse {
-  session: AuthenticatedUser;
-  authToken: string;
-  authTokenExpiresAt: number;
+  session: AuthenticatedUser | null;
+  authToken: string | null;
+  authTokenExpiresAt: number | null;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -46,7 +47,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!active) return;
         setUser(response.session);
         setAuthToken(response.authToken);
-        await writeStoredAuthToken(response.authToken);
+        if (response.authToken) {
+          await writeStoredAuthToken(response.authToken);
+        } else {
+          await clearStoredAuthToken();
+        }
       } catch (bootstrapError) {
         if (!active) return;
         setError(bootstrapError instanceof Error ? bootstrapError.message : 'Failed to load session.');
@@ -70,7 +75,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await postJson<AuthSessionResponse>('/api/auth/login', input);
       setUser(response.session);
       setAuthToken(response.authToken);
-      await writeStoredAuthToken(response.authToken);
+      if (response.authToken) {
+        await writeStoredAuthToken(response.authToken);
+      }
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : 'Login failed.');
       throw loginError;
@@ -86,7 +93,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await postJson<AuthSessionResponse>('/api/auth/register', input);
       setUser(response.session);
       setAuthToken(response.authToken);
-      await writeStoredAuthToken(response.authToken);
+      if (response.authToken) {
+        await writeStoredAuthToken(response.authToken);
+      }
     } catch (registerError) {
       setError(registerError instanceof Error ? registerError.message : 'Registration failed.');
       throw registerError;
@@ -109,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }
 
-  return <AuthContext.Provider value={{ user, loading, error, login, register, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, authToken, loading, error, login, register, logout }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthContextValue {

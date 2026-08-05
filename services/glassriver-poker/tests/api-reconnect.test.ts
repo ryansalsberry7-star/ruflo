@@ -29,9 +29,19 @@ test('issues and consumes reconnect tokens through session endpoints', async () 
   const port = await app.start(0);
 
   try {
-    const joinRes = await fetch(`http://127.0.0.1:${port}/api/tables/cash-aurora/join`, {
+    const loginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'Ada' }),
+    });
+    const loginPayload = await loginRes.json();
+
+    const joinRes = await fetch(`http://127.0.0.1:${port}/api/tables/cash-aurora/join`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${loginPayload.authToken}`,
+      },
       body: JSON.stringify({ userId: 'p4', username: 'Nina', buyIn: 50 }),
     });
 
@@ -48,7 +58,7 @@ test('issues and consumes reconnect tokens through session endpoints', async () 
 
     const reconnectPayload = await reconnectRes.json();
     assert.equal(reconnectRes.status, 200);
-    assert.equal(reconnectPayload.userId, 'p4');
+    assert.equal(reconnectPayload.userId, 'p1');
     assert.equal(reconnectPayload.tableId, 'cash-aurora');
 
     const secondAttempt = await fetch(`http://127.0.0.1:${port}/api/sessions/reconnect`, {
@@ -69,9 +79,19 @@ test('accepts direct multiplayer action endpoint updates', async () => {
   const port = await app.start(0);
 
   try {
-    const actionRes = await fetch(`http://127.0.0.1:${port}/api/tables/cash-aurora/action`, {
+    const loginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'Ada' }),
+    });
+    const loginPayload = await loginRes.json();
+
+    const actionRes = await fetch(`http://127.0.0.1:${port}/api/tables/cash-aurora/action`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${loginPayload.authToken}`,
+      },
       body: JSON.stringify({
         userId: 'p1',
         action: { type: 'bet', amount: 25 },
@@ -92,22 +112,32 @@ test('registers players into tournaments and exposes registration list', async (
   const port = await app.start(0);
 
   try {
-    const registerRes = await fetch(`http://127.0.0.1:${port}/api/tournaments/daily-royal/register`, {
+    const registerUserRes = await fetch(`http://127.0.0.1:${port}/api/auth/register`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'Ivy' }),
+    });
+    const registerUserPayload = await registerUserRes.json();
+
+    const registerRes = await fetch(`http://127.0.0.1:${port}/api/tournaments/daily-royal/register`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${registerUserPayload.authToken}`,
+      },
       body: JSON.stringify({ userId: 'p7', username: 'Ivy' }),
     });
 
     const registerPayload = await registerRes.json();
     assert.equal(registerRes.status, 200);
-    assert.equal(registerPayload.registration.userId, 'p7');
+    assert.equal(registerPayload.registration.userId, 'ivy');
 
     const listRes = await fetch(`http://127.0.0.1:${port}/api/tournaments/daily-royal/registrations`);
     const listPayload = await listRes.json();
     assert.equal(listRes.status, 200);
     assert.ok(Array.isArray(listPayload.registrations));
     assert.equal(listPayload.registrations.length, 1);
-    assert.equal(listPayload.registrations[0].userId, 'p7');
+    assert.equal(listPayload.registrations[0].userId, 'ivy');
   } finally {
     await app.stop();
   }
@@ -149,7 +179,7 @@ test('serves fair-play verification and replay payloads for completed hands', as
 
 test('exposes trust center and verified human profile endpoints', async () => {
   const services = buildDefaultServices();
-  const app = createPlatformServer(services);
+  const app = createPlatformServer(services, { adminKey: 'test-admin-key' });
   const port = await app.start(0);
 
   try {
@@ -160,6 +190,7 @@ test('exposes trust center and verified human profile endpoints', async () => {
 
     const verifyRes = await fetch(`http://127.0.0.1:${port}/api/trust/p9/verify-human`, {
       method: 'POST',
+      headers: { 'x-admin-key': 'test-admin-key' },
     });
     const verify = await verifyRes.json();
     assert.equal(verifyRes.status, 200);
@@ -180,13 +211,23 @@ test('supports social clubs, ai hand analysis, and find-my-game matchmaking', as
   const port = await app.start(0);
 
   try {
+    const loginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'Ada' }),
+    });
+    const loginPayload = await loginRes.json();
+
     services.poker.applyPlayerAction('cash-aurora', 'p1', 'bet', 15);
     services.poker.applyPlayerAction('cash-aurora', 'p2', 'call', 15);
     const settled = services.poker.settleHand('cash-aurora');
 
     const clubRes = await fetch(`http://127.0.0.1:${port}/api/social/clubs`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${loginPayload.authToken}`,
+      },
       body: JSON.stringify({ ownerId: 'p1', name: 'Night Owls', description: 'Home game regulars' }),
     });
     const clubPayload = await clubRes.json();
@@ -194,7 +235,12 @@ test('supports social clubs, ai hand analysis, and find-my-game matchmaking', as
     assert.ok(clubPayload.club.id.length > 0);
 
     const coachRes = await fetch(
-      `http://127.0.0.1:${port}/api/coach/hands/${settled.handId}/analyze?userId=p1&tableId=cash-aurora`
+      `http://127.0.0.1:${port}/api/coach/hands/${settled.handId}/analyze?userId=p1&tableId=cash-aurora`,
+      {
+        headers: {
+          authorization: `Bearer ${loginPayload.authToken}`,
+        },
+      }
     );
     const coachPayload = await coachRes.json();
     assert.equal(coachRes.status, 200);
@@ -203,7 +249,10 @@ test('supports social clubs, ai hand analysis, and find-my-game matchmaking', as
 
     const matchRes = await fetch(`http://127.0.0.1:${port}/api/lobby/find-my-game`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${loginPayload.authToken}`,
+      },
       body: JSON.stringify({ userId: 'p1', stakes: 'micro', speed: 'standard', tableSize: 6, skillLevel: 'beginner' }),
     });
     const matchPayload = await matchRes.json();
@@ -223,7 +272,8 @@ test('bootstraps, logs in, and registers auth sessions for app user context', as
     const bootstrapRes = await fetch(`http://127.0.0.1:${port}/api/auth/session`);
     const bootstrapPayload = await bootstrapRes.json();
     assert.equal(bootstrapRes.status, 200);
-    assert.equal(bootstrapPayload.session.userId, 'p1');
+    assert.equal(bootstrapPayload.session, null);
+    assert.equal(bootstrapPayload.source, 'anonymous');
 
     const loginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
       method: 'POST',
@@ -290,8 +340,8 @@ test('restores stored auth token sessions and revokes them on logout', async () 
     });
     const fallbackPayload = await fallbackRes.json();
     assert.equal(fallbackRes.status, 200);
-    assert.equal(fallbackPayload.session.userId, 'p1');
-    assert.equal(fallbackPayload.source, 'bootstrap');
+    assert.equal(fallbackPayload.session, null);
+    assert.equal(fallbackPayload.source, 'anonymous');
   } finally {
     await app.stop();
   }
@@ -303,6 +353,13 @@ test('serves high hand leaderboards, history, premium benefits, and shareable hi
   const port = await app.start(0);
 
   try {
+    const loginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'Ada' }),
+    });
+    const loginPayload = await loginRes.json();
+
     const dealerHand = (services.poker as unknown as {
       activeDealerHands: Map<string, {
         communityCards: Array<{ suit: 'clubs' | 'diamonds' | 'hearts' | 'spades'; rank: '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | 'T' | 'J' | 'Q' | 'K' | 'A'; id: string }>;
@@ -346,13 +403,17 @@ test('serves high hand leaderboards, history, premium benefits, and shareable hi
     assert.ok(Array.isArray(leaderboardPayload.leaderboards.day));
     assert.equal(leaderboardPayload.leaderboards.allTime[0].handName, 'Royal Flush');
 
-    const historyRes = await fetch(`http://127.0.0.1:${port}/api/high-hands/history/p1`);
+    const historyRes = await fetch(`http://127.0.0.1:${port}/api/high-hands/history/p1`, {
+      headers: { authorization: `Bearer ${loginPayload.authToken}` },
+    });
     const historyPayload = await historyRes.json();
     assert.equal(historyRes.status, 200);
     assert.ok(Array.isArray(historyPayload.history));
     assert.equal(historyPayload.history[0].playerId, 'p1');
 
-    const premiumRes = await fetch(`http://127.0.0.1:${port}/api/high-hands/premium/p1`);
+    const premiumRes = await fetch(`http://127.0.0.1:${port}/api/high-hands/premium/p1`, {
+      headers: { authorization: `Bearer ${loginPayload.authToken}` },
+    });
     const premiumPayload = await premiumRes.json();
     assert.equal(premiumRes.status, 200);
     assert.equal(premiumPayload.premium.proMember, true);

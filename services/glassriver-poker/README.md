@@ -1,13 +1,13 @@
 # GlassRiver Poker
 
-GlassRiver is a premium, zero-rake poker platform concept built as a production-grade mobile-first product. The initial implementation includes:
+GlassRiver is a premium, zero-rake poker play-money beta built as a mobile-first product. The current implementation includes:
 
 - a server-authoritative Hold’em engine
 - an immutable wallet ledger
 - a real-time WebSocket gateway for table synchronization and actions
 - modular services for poker, wallet, payments, compliance, users, and analytics
 - a polished Expo mobile app shell with the full phase-one screen map
-- a future-ready architecture blueprint for legally compliant real-money mode
+- a future-ready architecture blueprint for separately licensed real-money mode
 
 ## Architecture
 
@@ -32,12 +32,24 @@ npm start
 
 The server boots with a seeded table and exposes a WebSocket endpoint at `ws://localhost:4040`.
 
+Current environment posture:
+
+- play-money only
+- no real-money wagering enabled
+- authenticated table actions required
+- moderation and trust mutation routes are internal/admin-gated
+
 ### Phase 2 API Endpoints
 
 - `GET /api/health`
+- `GET /api/auth/session`
+- `POST /api/auth/login`
+- `POST /api/auth/register`
+- `POST /api/auth/logout`
 - `GET /api/fair-play`
 - `GET /api/lobby/cash-games`
 - `GET /api/lobby/tournaments`
+- `POST /api/lobby/find-my-game` (authenticated)
 - `GET /api/spectator/featured-tables`
 - `POST /api/tournaments/:tournamentId/register`
 - `GET /api/tournaments/:tournamentId/registrations`
@@ -47,10 +59,14 @@ The server boots with a seeded table and exposes a WebSocket endpoint at `ws://l
 - `GET /api/tables/:tableId/replay/:handId`
 - `GET /api/hands/:handId/verification`
 - `GET /api/wallet/:userId`
+- `GET /api/high-hands/leaderboards`
+- `GET /api/high-hands/history/:userId`
+- `GET /api/high-hands/highlights/:handId`
+- `GET /api/high-hands/premium/:userId`
 - `POST /api/sessions/token`
 - `POST /api/sessions/reconnect`
 
-Realtime gameplay is available at `ws://localhost:4040/ws` with server-authoritative action handling and reconnect token recovery.
+Realtime gameplay is available at `ws://localhost:4040/ws` with server-authoritative action handling, authenticated socket identity, and reconnect token recovery.
 
 Turn control includes per-turn action countdown timers. If the current player does not act before timeout, the server force-folds the player and advances the turn.
 
@@ -66,6 +82,16 @@ Each completed hand stores a verification payload containing:
 - replay event timeline for spectator and review experiences
 
 The platform intentionally avoids claiming "provably fair" cryptographic proofs. It provides transparent server-side verification records designed for future independent auditing.
+
+### Admin-gated moderation routes
+
+The following routes are intended for internal operations only and should be protected with `GLASSRIVER_ADMIN_KEY` in deployment:
+
+- `POST /api/trust/:userId/verify-human`
+- `POST /api/trust/:userId/security-status`
+- `POST /api/trust/:userId/anti-cheat-signal`
+- `GET /api/trust/flagged`
+- `POST /api/trust/collusion-assessment`
 
 ## Validation
 

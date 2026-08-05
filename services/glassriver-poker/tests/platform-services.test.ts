@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { PokerService } from '../src/services/poker-service.js';
 import { PaymentService } from '../src/services/payment-service.js';
 import { ComplianceService } from '../src/services/compliance-service.js';
@@ -7,6 +10,7 @@ import { WalletService } from '../src/services/wallet-service.js';
 import { CoachService } from '../src/services/coach-service.js';
 import { CommunityService } from '../src/services/community-service.js';
 import { HighHandService } from '../src/services/high-hand-service.js';
+import { SessionService } from '../src/services/session-service.js';
 import { TrustService } from '../src/services/trust-service.js';
 
 test('settles hands with zero rake and full player-to-player pot distribution', () => {
@@ -173,4 +177,22 @@ test('tracks qualifying high hands with non-cash rewards and shareable highlight
   const highlight = highHands.getHighlight('hh-1');
   assert.equal(highlight.achievementEarned, 'Royal Flush Champion');
   assert.ok(highlight.shareText.includes('Royal Flush'));
+});
+
+test('persists auth sessions across service restarts', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'glassriver-sessions-'));
+  const storagePath = join(tempDir, 'auth-sessions.json');
+
+  try {
+    const first = new SessionService({ authStoragePath: storagePath });
+    const issued = first.issueAuthToken('p1');
+
+    const second = new SessionService({ authStoragePath: storagePath });
+    const restored = second.resolveAuthToken(issued.token);
+
+    assert.ok(restored);
+    assert.equal(restored?.userId, 'p1');
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
 });

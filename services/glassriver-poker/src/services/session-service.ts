@@ -1,3 +1,5 @@
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 
 export interface ReconnectSession {
@@ -15,9 +17,17 @@ export interface AuthSession {
   expiresAt: number;
 }
 
+interface SessionServiceOptions {
+  authStoragePath?: string | null;
+}
+
 export class SessionService {
   private readonly reconnectSessions = new Map<string, ReconnectSession>();
   private readonly authSessions = new Map<string, AuthSession>();
+
+  constructor(private readonly options: SessionServiceOptions = {}) {
+    this.loadPersistedAuthSessions();
+  }
 
   issueReconnectToken(userId: string, tableId: string, ttlMs = 1000 * 60 * 30): ReconnectSession {
     const token = randomBytes(24).toString('hex');
@@ -49,6 +59,7 @@ export class SessionService {
     };
 
     this.authSessions.set(token, session);
+    this.persistAuthSessions();
     return session;
   }
 
@@ -79,6 +90,7 @@ export class SessionService {
     if (!session) return null;
     if (Date.now() > session.expiresAt) {
       this.authSessions.delete(token);
+      this.persistAuthSessions();
       return null;
     }
     return session;
@@ -86,5 +98,35 @@ export class SessionService {
 
   revokeAuthToken(token: string): void {
     this.authSessions.delete(token);
+    this.persistAuthSessions();
+  }
+
+  private loadPersistedAuthSessions(): void {
+    const storagePath = this.getStoragePath();
+    if (!storagePath) return;
+
+    try {
+      const raw = readFileSync(storagePath, 'utf8');
+      const parsed = JSON.parse(raw) as AuthSession[];
+      for (const session of parsed) {
+        if (Date.now() > session.expiresAt) continue;
+        this.authSessions.set(session.token, session);
+      }
+    } catch {
+      // Missing or invalid storage should not block startup.
+    }
+  }
+
+  private persistAuthSessions(): void {
+    const storagePath = this.getStoragePath();
+    if (!storagePath) return;
+
+    mkdirSync(dirname(storagePath), { recursive: true });
+    writeFileSync(storagePath, JSON.stringify(Array.from(this.authSessions.values()), null, 2), 'utf8');
+  }
+
+  private getStoragePath(): string | null {
+    if (this.options.authStoragePath === null) return null;
+    return this.options.authStoragePath ?? resolve(process.cwd(), 'data/runtime/auth-sessions.json');
   }
 }

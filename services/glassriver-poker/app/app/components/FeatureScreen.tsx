@@ -19,6 +19,7 @@ export function FeatureScreen({ eyebrow, title, description }: FeatureScreenProp
       <View style={styles.policyCard}>
         <Text style={styles.policyTitle}>Zero-rake policy</Text>
         <Text style={styles.policyText}>All poker pots are distributed player-to-player. Platform fees are shown separately before payment confirmation.</Text>
+        <Text style={styles.policyText}>Current mobile build is a play-money beta and review environment. Real-money gameplay is disabled unless separately licensed and enabled.</Text>
       </View>
 
       <Link href="/" asChild>

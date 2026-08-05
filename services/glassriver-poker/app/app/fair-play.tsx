@@ -76,7 +76,7 @@ export default function FairPlayScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.eyebrow}>TRUST CENTER</Text>
       <Text style={styles.title}>Fair Play Transparency</Text>
-      <Text style={styles.subtitle}>Built to make players trust the game, not just the marketing.</Text>
+      <Text style={styles.subtitle}>Built to make players trust the game, not just the marketing. This App Store build is play-money only.</Text>
 
       <View style={styles.promiseCard}>
         <Text style={styles.promiseTitle}>{trustCenter.promise}</Text>

@@ -163,12 +163,27 @@ export function dealRiver(table: TableState): TableState {
 export function applyAction(table: TableState, action: PlayerAction): TableState {
   const player = table.players.find((entry) => entry.id === action.playerId);
   if (!player) throw new Error('Player not found');
+  if (table.currentTurn && table.currentTurn !== action.playerId) {
+    throw new Error('Action out of turn');
+  }
+  if (player.folded || player.allIn || player.stack <= 0) {
+    throw new Error('Player is not eligible to act');
+  }
+
+  if ((action.type === 'check' || action.type === 'fold') && (action.amount ?? 0) > 0) {
+    throw new Error('This action cannot include a wager');
+  }
+
+  const committedAmount = action.type === 'all-in' ? player.stack : action.amount ?? 0;
+  if (committedAmount > player.stack) {
+    throw new Error('Insufficient stack for requested action');
+  }
 
   const nextState: TableState = {
     ...table,
-    actionHistory: [...table.actionHistory, action],
-    pot: table.pot + (action.amount ?? 0),
-    players: table.players.map((entry) => entry.id === action.playerId ? { ...entry, stack: entry.stack - (action.amount ?? 0) } : entry),
+    actionHistory: [...table.actionHistory, { ...action, amount: committedAmount }],
+    pot: table.pot + committedAmount,
+    players: table.players.map((entry) => entry.id === action.playerId ? { ...entry, stack: entry.stack - committedAmount } : entry),
   };
 
   if (action.type === 'fold') {

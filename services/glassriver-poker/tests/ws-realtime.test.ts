@@ -44,7 +44,14 @@ test('allows websocket reconnect using reconnect token within grace window', asy
   const first = await openSocket(baseUrl);
 
   try {
-    first.send(JSON.stringify({ event: 'auth', payload: { userId: 'p1', tableId: 'cash-aurora' } }));
+    const loginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'Ada' }),
+    });
+    const loginPayload = await loginRes.json();
+
+    first.send(JSON.stringify({ event: 'auth', payload: { authToken: loginPayload.authToken, tableId: 'cash-aurora' } }));
     const authOk = await waitForEvent(first, 'auth_ok');
     const reconnectToken = String(authOk.payload?.reconnectToken ?? '');
     assert.ok(reconnectToken.length > 10);
@@ -78,12 +85,26 @@ test('marks disconnected players as timed out and auto-folds after grace window'
   const actor = await openSocket(baseUrl);
 
   try {
-    observer.send(JSON.stringify({ event: 'auth', payload: { userId: 'p2', tableId: 'cash-aurora' } }));
+    const observerLoginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'Linus' }),
+    });
+    const observerLoginPayload = await observerLoginRes.json();
+
+    const actorLoginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'Ada' }),
+    });
+    const actorLoginPayload = await actorLoginRes.json();
+
+    observer.send(JSON.stringify({ event: 'auth', payload: { authToken: observerLoginPayload.authToken, tableId: 'cash-aurora' } }));
     await waitForEvent(observer, 'auth_ok');
     observer.send(JSON.stringify({ event: 'subscribe_table', payload: { tableId: 'cash-aurora' } }));
     await waitForEvent(observer, 'table_sync');
 
-    actor.send(JSON.stringify({ event: 'auth', payload: { userId: 'p1', tableId: 'cash-aurora' } }));
+    actor.send(JSON.stringify({ event: 'auth', payload: { authToken: actorLoginPayload.authToken, tableId: 'cash-aurora' } }));
     await waitForEvent(actor, 'auth_ok');
     actor.send(JSON.stringify({ event: 'subscribe_table', payload: { tableId: 'cash-aurora' } }));
     await waitForEvent(actor, 'table_sync');
@@ -120,7 +141,14 @@ test('forces fold when per-turn action timer expires', async () => {
   const observer = await openSocket(baseUrl);
 
   try {
-    observer.send(JSON.stringify({ event: 'auth', payload: { userId: 'p2', tableId: 'cash-aurora' } }));
+    const observerLoginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'Linus' }),
+    });
+    const observerLoginPayload = await observerLoginRes.json();
+
+    observer.send(JSON.stringify({ event: 'auth', payload: { authToken: observerLoginPayload.authToken, tableId: 'cash-aurora' } }));
     await waitForEvent(observer, 'auth_ok');
     observer.send(JSON.stringify({ event: 'subscribe_table', payload: { tableId: 'cash-aurora' } }));
     await waitForEvent(observer, 'table_sync');
