@@ -184,3 +184,7 @@ v3/@claude-flow/cli/plugins/
 # Runtime proven-config adoption state (per-install, not source)
 .claude/proven-config.json
 .claude/.proven-config-version
+
+# Expo local cache — machine-specific, not source (mirrors the nested
+# services/truestack-poker/app/.gitignore rule for wherever `expo start` runs)
+.expo/
