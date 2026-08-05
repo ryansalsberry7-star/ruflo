@@ -9,6 +9,7 @@ import { ComplianceService } from './services/compliance-service.js';
 import { CommunityService } from './services/community-service.js';
 import { FundingService } from './services/funding-service.js';
 import type { GameHostProvider } from './services/game-host-provider.js';
+import { StaticLocationVerifier, type LocationVerifier, type VerifiedLocation } from './services/location-verifier.js';
 import { HighHandService } from './services/high-hand-service.js';
 import { PaymentService } from './services/payment-service.js';
 import { PokerService } from './services/poker-service.js';
@@ -47,6 +48,24 @@ export interface PlatformServerOptions {
 export interface BuildServicesOptions {
   /** Persist users, wallets, trust profiles, and high-hand history to data/runtime/*.json. Off by default so test runs stay isolated. */
   persist?: boolean;
+  /** Override the geolocation provider. Defaults to the env-configured one, which fails closed. */
+  locationVerifier?: LocationVerifier;
+}
+
+/**
+ * Pick the geolocation provider from the environment.
+ *
+ * Default is UnverifiedLocationVerifier (via ComplianceService), which blocks all
+ * real-money play because presence cannot be confirmed. Setting
+ * TRUESTACK_DEV_TRUSTED_JURISDICTION fabricates a location for local development;
+ * StaticLocationVerifier refuses to construct under NODE_ENV=production so that
+ * flag cannot silently authorize real players. A real deployment wires a
+ * vendor-backed verifier (Radar, GeoComply) here instead.
+ */
+function resolveConfiguredLocationVerifier(): LocationVerifier | undefined {
+  const devJurisdiction = process.env.TRUESTACK_DEV_TRUSTED_JURISDICTION?.trim();
+  if (!devJurisdiction) return undefined;
+  return new StaticLocationVerifier(devJurisdiction);
 }
 
 /** Dev-only seed password for the bundled demo accounts (Ada/Linus/Grace). Override via env for shared environments. */
@@ -67,7 +86,11 @@ export function buildDefaultServices(options: BuildServicesOptions = {}): Platfo
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
   const regionalGating = new RegionalGatingService(authorizedJurisdictions);
-  const compliance = new ComplianceService({ realMoneyEnabled, regionalGating });
+  const compliance = new ComplianceService({
+    realMoneyEnabled,
+    regionalGating,
+    locationVerifier: options.locationVerifier ?? resolveConfiguredLocationVerifier(),
+  });
   const funding = new FundingService(wallet, payment, compliance);
   const users = new UserService({ storagePath: runtimeStoragePath(options.persist, 'users.json') });
   const analytics = new AnalyticsService();
@@ -528,9 +551,10 @@ async function routeRequest(
       sendJson(res, 403, { error: 'Authorized access to compliance status is required.' });
       return;
     }
-    const jurisdiction = requestUrl.searchParams.get('jurisdiction');
     sendJson(res, 200, {
-      decision: services.compliance.getDecision(userId, { jurisdiction }),
+      decision: services.compliance.getDecision(userId, {
+        location: await resolveLocation(req, services, {}),
+      }),
       kyc: services.compliance.getKycProfile(userId),
       responsibleGaming: services.compliance.getResponsibleGamingProfile(userId),
     });
@@ -548,7 +572,7 @@ async function routeRequest(
       accountId: actor.id,
       amount: Number(body.amount ?? 0),
       mode: body.mode === 'instant' ? 'instant' : 'standard',
-      jurisdiction: typeof body.jurisdiction === 'string' ? body.jurisdiction : null,
+      location: await resolveLocation(req, services, body),
     });
     if (!result.ok) {
       sendJson(res, result.code === 'compliance-blocked' ? 403 : 402, { error: result.code, reasons: result.reasons });
@@ -569,7 +593,7 @@ async function routeRequest(
       accountId: actor.id,
       amount: Number(body.amount ?? 0),
       mode: body.mode === 'instant' ? 'instant' : 'standard',
-      jurisdiction: typeof body.jurisdiction === 'string' ? body.jurisdiction : null,
+      location: await resolveLocation(req, services, body),
     });
     if (!result.ok) {
       sendJson(res, result.code === 'compliance-blocked' ? 403 : 402, { error: result.code, reasons: result.reasons });
@@ -874,10 +898,12 @@ async function routeRequest(
     services.trust.ensurePlayer(userId);
     services.community.ensureProfile(userId, username);
 
-    // In real-money mode a seat requires a passing compliance decision (KYC + region + RG).
+    // In real-money mode a seat requires a passing compliance decision
+    // (KYC + verified presence + region + RG).
     if (services.compliance.isRealMoneyEnabled()) {
-      const jurisdiction = typeof body.jurisdiction === 'string' ? body.jurisdiction : null;
-      const decision = services.compliance.getDecision(userId, { jurisdiction });
+      const decision = services.compliance.getDecision(userId, {
+        location: await resolveLocation(req, services, body),
+      });
       if (!decision.canPlayRealMoney) {
         sendJson(res, 403, { error: 'compliance-blocked', reasons: decision.reasons });
         return;
@@ -1058,6 +1084,26 @@ function getClientIp(req: IncomingMessage): string {
   const forwarded = req.headers['x-forwarded-for'];
   if (typeof forwarded === 'string' && forwarded.length > 0) return forwarded.split(',')[0].trim();
   return req.socket.remoteAddress ?? 'unknown';
+}
+
+/**
+ * Resolve verified presence for the current request.
+ *
+ * The client's own `jurisdiction` field is forwarded only as `claimedJurisdiction`,
+ * which the default verifier discards. It is never treated as authorization -- the
+ * IP is read server-side and the attestation token comes from a geolocation SDK.
+ */
+async function resolveLocation(
+  req: IncomingMessage,
+  services: PlatformServices,
+  body: Record<string, unknown>
+): Promise<VerifiedLocation> {
+  const attestationHeader = req.headers['x-geo-attestation'];
+  return await services.compliance.verifyLocation({
+    claimedJurisdiction: typeof body.jurisdiction === 'string' ? body.jurisdiction : null,
+    ip: getClientIp(req),
+    attestationToken: typeof attestationHeader === 'string' ? attestationHeader : null,
+  });
 }
 
 function readBearerToken(req: IncomingMessage): string | null {

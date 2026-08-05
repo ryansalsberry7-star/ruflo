@@ -1,5 +1,6 @@
 import type { WalletState } from '../wallet.js';
 import type { ComplianceService } from './compliance-service.js';
+import type { VerifiedLocation } from './location-verifier.js';
 import type { PaymentService, PaymentTransaction } from './payment-service.js';
 import type { WalletService } from './wallet-service.js';
 
@@ -14,7 +15,8 @@ export interface FundingRequest {
   accountId: string;
   amount: number;
   mode?: 'instant' | 'standard';
-  jurisdiction?: string | null;
+  /** Verifier-confirmed presence. Omitted means unverified, which blocks deposits. */
+  location?: VerifiedLocation | null;
 }
 
 export type FundingResult =
@@ -42,7 +44,7 @@ export class FundingService {
     }
 
     const decision = this.compliance.getDecision(request.accountId, {
-      jurisdiction: request.jurisdiction,
+      location: request.location,
       amount,
     });
     if (!decision.canDeposit) {
@@ -76,7 +78,7 @@ export class FundingService {
       return { ok: false, code: 'invalid-amount', reasons: ['Withdrawal amount must be a positive number.'] };
     }
 
-    const decision = this.compliance.getDecision(request.accountId, { jurisdiction: request.jurisdiction });
+    const decision = this.compliance.getDecision(request.accountId, { location: request.location });
     if (!decision.canWithdraw) {
       return { ok: false, code: 'compliance-blocked', reasons: decision.reasons };
     }

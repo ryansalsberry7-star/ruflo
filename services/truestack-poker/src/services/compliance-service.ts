@@ -1,4 +1,11 @@
 import type { RegionalGatingService } from './regional-gating-service.js';
+import {
+  UNVERIFIED_LOCATION,
+  UnverifiedLocationVerifier,
+  type LocationEvidence,
+  type LocationVerifier,
+  type VerifiedLocation,
+} from './location-verifier.js';
 
 export type KycStatus = 'unstarted' | 'pending' | 'verified' | 'rejected';
 
@@ -22,8 +29,14 @@ export interface ResponsibleGamingProfile {
 }
 
 export interface ComplianceContext {
-  /** Verified jurisdiction for the current request/session (e.g. 'US-NV'). Falls back to the KYC jurisdiction. */
-  jurisdiction?: string | null;
+  /**
+   * Where the player was confirmed to physically be, as produced by a LocationVerifier.
+   * This is deliberately not a plain string: a raw jurisdiction is a client claim, and
+   * accepting one here is what let spoofed locations authorize real-money play. There is
+   * no fallback to the KYC jurisdiction either -- that records where an ID was issued,
+   * not where the player is sitting right now.
+   */
+  location?: VerifiedLocation | null;
   /** Optional deposit amount, used to evaluate remaining daily deposit headroom. */
   amount?: number;
 }
@@ -35,6 +48,10 @@ export interface ComplianceDecision {
   canWithdraw: boolean;
   kycStatus: KycStatus;
   jurisdiction: string | null;
+  /** True only when a LocationVerifier confirmed physical presence for this decision. */
+  locationVerified: boolean;
+  /** Which provider established the location, recorded for the compliance audit trail. */
+  locationSource: string;
   realMoneyEnabled: boolean;
   remainingDailyDeposit: number;
   reasons: string[];
@@ -44,6 +61,8 @@ export interface ComplianceServiceOptions {
   realMoneyEnabled?: boolean;
   regionalGating?: RegionalGatingService;
   minAgeYears?: number;
+  /** Defaults to UnverifiedLocationVerifier, which fails closed. */
+  locationVerifier?: LocationVerifier;
 }
 
 interface DailyDepositRecord {
@@ -73,15 +92,30 @@ export class ComplianceService {
   private readonly realMoneyEnabled: boolean;
   private readonly regionalGating: RegionalGatingService | null;
   private readonly minAgeYears: number;
+  private readonly locationVerifier: LocationVerifier;
 
   constructor(options: ComplianceServiceOptions = {}) {
     this.realMoneyEnabled = options.realMoneyEnabled ?? false;
     this.regionalGating = options.regionalGating ?? null;
     this.minAgeYears = options.minAgeYears ?? 21;
+    this.locationVerifier = options.locationVerifier ?? new UnverifiedLocationVerifier();
   }
 
   isRealMoneyEnabled(): boolean {
     return this.realMoneyEnabled;
+  }
+
+  getLocationVerifierId(): string {
+    return this.locationVerifier.id;
+  }
+
+  /**
+   * Turn raw request evidence into a VerifiedLocation. Call this at the HTTP boundary
+   * and pass the result into getDecision -- never hand getDecision a client-supplied
+   * jurisdiction string.
+   */
+  async verifyLocation(evidence: LocationEvidence): Promise<VerifiedLocation> {
+    return await this.locationVerifier.verify(evidence);
   }
 
   getKycProfile(accountId: string): KycProfile {
@@ -163,11 +197,10 @@ export class ComplianceService {
   getDecision(accountId: string, context: ComplianceContext = {}): ComplianceDecision {
     const profile = this.getResponsibleGamingProfile(accountId);
     const kyc = this.getKycProfile(accountId);
-    const rawJurisdiction = context.jurisdiction ?? kyc.jurisdiction;
-    const resolvedJurisdiction =
-      typeof rawJurisdiction === 'string' && rawJurisdiction.trim().length > 0
-        ? rawJurisdiction.trim().toUpperCase()
-        : null;
+    const location = context.location ?? UNVERIFIED_LOCATION;
+    // Only a verifier-confirmed jurisdiction counts. An unverified result carries no
+    // jurisdiction at all, so it can never match the regional allowlist below.
+    const resolvedJurisdiction = location.verified ? location.jurisdiction : null;
     const remainingDailyDeposit = this.remainingDailyDeposit(accountId);
     const reasons: string[] = [];
 
@@ -180,10 +213,16 @@ export class ComplianceService {
         canWithdraw: false,
         kycStatus: kyc.status,
         jurisdiction: resolvedJurisdiction,
+        locationVerified: location.verified,
+        locationSource: location.source,
         realMoneyEnabled: false,
         remainingDailyDeposit,
         reasons,
       };
+    }
+
+    if (!location.verified) {
+      reasons.push(location.reason);
     }
 
     if (profile.selfExcluded) {
@@ -211,14 +250,15 @@ export class ComplianceService {
     }
 
     const kycVerified = kyc.status === 'verified';
-    const regionAllowed = regionDecision?.realMoneyAllowed ?? false;
+    const regionAllowed = (regionDecision?.realMoneyAllowed ?? false) && location.verified;
     const ageOk = !kyc.dateOfBirth || (ageInYears(kyc.dateOfBirth) ?? 0) >= this.minAgeYears;
     const notExcluded = !profile.selfExcluded;
 
     const baseEligible = notExcluded && kycVerified && ageOk;
     const canPlayRealMoney = baseEligible && regionAllowed;
     const canDeposit = canPlayRealMoney && remainingDailyDeposit > 0;
-    // Withdrawals skip the in-region check so a verified player can cash out while traveling.
+    // Withdrawals skip the in-region check so a verified player can cash out while
+    // traveling -- returning their own money is not placing a wager.
     const canWithdraw = notExcluded && kycVerified && ageOk;
 
     if (canDeposit && typeof context.amount === 'number' && context.amount > remainingDailyDeposit) {
@@ -232,6 +272,8 @@ export class ComplianceService {
       canWithdraw,
       kycStatus: kyc.status,
       jurisdiction: resolvedJurisdiction,
+      locationVerified: location.verified,
+      locationSource: location.source,
       realMoneyEnabled: true,
       remainingDailyDeposit,
       reasons: reasons.length > 0 ? reasons : ['All compliance checks passed.'],
