@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useAuth } from './lib/auth';
 import { getJson } from './lib/api';
 
 interface PlayerProfile {
@@ -16,21 +17,26 @@ interface PokerClub {
   weeklyTournamentName: string;
 }
 
-const USER_ID = 'p1';
-
 export default function FriendsScreen() {
+  const { user, loading: authLoading } = useAuth();
   const [follows, setFollows] = useState<PlayerProfile[]>([]);
   const [clubs, setClubs] = useState<PokerClub[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const activeUserId = user?.userId;
+    if (!activeUserId) {
+      setLoading(false);
+      return;
+    }
+
     let active = true;
 
     async function load(): Promise<void> {
       try {
         const [myProfileResponse, clubsResponse] = await Promise.all([
-          getJson<{ profile: PlayerProfile }>(`/api/profiles/${USER_ID}`),
+          getJson<{ profile: PlayerProfile }>(`/api/profiles/${activeUserId}`),
           getJson<{ clubs: PokerClub[] }>('/api/social/clubs'),
         ]);
 
@@ -57,12 +63,20 @@ export default function FriendsScreen() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [user?.userId]);
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <View style={styles.centered}>
         <Text style={styles.loadingText}>Loading friends and clubs...</Text>
+      </View>
+    );
+  }
+
+  if (!user) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.errorText}>Sign in to load your social graph.</Text>
       </View>
     );
   }

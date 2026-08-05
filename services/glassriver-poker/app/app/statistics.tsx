@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useAuth } from './lib/auth';
 import { getJson } from './lib/api';
 
 interface SessionTracker {
@@ -21,22 +22,27 @@ interface SessionReview {
   };
 }
 
-const USER_ID = 'p1';
-
 export default function StatisticsScreen() {
+  const { user, loading: authLoading } = useAuth();
   const [tracker, setTracker] = useState<SessionTracker | null>(null);
   const [review, setReview] = useState<SessionReview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const activeUserId = user?.userId;
+    if (!activeUserId) {
+      setLoading(false);
+      return;
+    }
+
     let active = true;
 
     async function load(): Promise<void> {
       try {
         const [trackerResponse, reviewResponse] = await Promise.all([
-          getJson<{ tracker: SessionTracker }>(`/api/session-tracker/${USER_ID}`),
-          getJson<{ review: SessionReview }>(`/api/coach/${USER_ID}/session-review`),
+          getJson<{ tracker: SessionTracker }>(`/api/session-tracker/${activeUserId}`),
+          getJson<{ review: SessionReview }>(`/api/coach/${activeUserId}/session-review`),
         ]);
 
         if (!active) return;
@@ -55,17 +61,25 @@ export default function StatisticsScreen() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [user?.userId]);
 
   const totalNet = useMemo(() => {
     if (!tracker) return 0;
     return tracker.recentTrend.reduce((sum, point) => sum + point.net, 0);
   }, [tracker]);
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <View style={styles.centered}>
         <Text style={styles.loadingText}>Loading AI coaching insights...</Text>
+      </View>
+    );
+  }
+
+  if (!user) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.errorText}>Sign in to load coaching analytics.</Text>
       </View>
     );
   }

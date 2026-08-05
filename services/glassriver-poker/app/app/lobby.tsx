@@ -1,6 +1,7 @@
 import { Link } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useAuth } from './lib/auth';
 import { getJson, postJson } from './lib/api';
 
 interface TableListing {
@@ -25,9 +26,8 @@ interface Recommendation {
   reason: string;
 }
 
-const USER_ID = 'p1';
-
 export default function LobbyScreen() {
+  const { user, loading: authLoading } = useAuth();
   const [tables, setTables] = useState<TableListing[]>([]);
   const [featureTournament, setFeatureTournament] = useState<Tournament | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -35,6 +35,12 @@ export default function LobbyScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const activeUserId = user?.userId;
+    if (!activeUserId) {
+      setLoading(false);
+      return;
+    }
+
     let active = true;
 
     async function load(): Promise<void> {
@@ -43,7 +49,7 @@ export default function LobbyScreen() {
           getJson<{ listings: TableListing[] }>('/api/lobby/cash-games'),
           getJson<{ tournaments: Tournament[] }>('/api/lobby/tournaments'),
           postJson<{ recommendations: Recommendation[] }>('/api/lobby/find-my-game', {
-            userId: USER_ID,
+            userId: activeUserId,
             stakes: 'micro',
             speed: 'standard',
             tableSize: 6,
@@ -67,12 +73,20 @@ export default function LobbyScreen() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [user?.userId]);
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <View style={styles.centered}>
         <Text style={styles.loadingText}>Loading lobby...</Text>
+      </View>
+    );
+  }
+
+  if (!user) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.errorText}>Sign in to get personalized table recommendations.</Text>
       </View>
     );
   }

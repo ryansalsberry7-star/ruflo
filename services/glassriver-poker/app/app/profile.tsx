@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useAuth } from './lib/auth';
 import { getJson } from './lib/api';
 
 interface PlayerProfile {
@@ -29,9 +30,8 @@ interface Achievement {
   title: string;
 }
 
-const USER_ID = 'p1';
-
 export default function ProfileScreen() {
+  const { user, loading: authLoading } = useAuth();
   const [profile, setProfile] = useState<PlayerProfile | null>(null);
   const [trust, setTrust] = useState<TrustSnapshot | null>(null);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
@@ -39,14 +39,20 @@ export default function ProfileScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const activeUserId = user?.userId;
+    if (!activeUserId) {
+      setLoading(false);
+      return;
+    }
+
     let active = true;
 
     async function load(): Promise<void> {
       try {
         const [profileResponse, trustResponse, achievementsResponse] = await Promise.all([
-          getJson<{ profile: PlayerProfile }>(`/api/profiles/${USER_ID}`),
-          getJson<{ trust: TrustSnapshot }>(`/api/trust/${USER_ID}`),
-          getJson<{ achievements: Achievement[] }>(`/api/profiles/${USER_ID}/achievements`),
+          getJson<{ profile: PlayerProfile }>(`/api/profiles/${activeUserId}`),
+          getJson<{ trust: TrustSnapshot }>(`/api/trust/${activeUserId}`),
+          getJson<{ achievements: Achievement[] }>(`/api/profiles/${activeUserId}/achievements`),
         ]);
 
         if (!active) return;
@@ -66,12 +72,20 @@ export default function ProfileScreen() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [user?.userId]);
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <View style={styles.centered}>
         <Text style={styles.loadingText}>Loading player profile...</Text>
+      </View>
+    );
+  }
+
+  if (!user) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.errorText}>Sign in to load your player profile.</Text>
       </View>
     );
   }

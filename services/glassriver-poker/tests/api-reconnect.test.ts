@@ -213,3 +213,38 @@ test('supports social clubs, ai hand analysis, and find-my-game matchmaking', as
     await app.stop();
   }
 });
+
+test('bootstraps, logs in, and registers auth sessions for app user context', async () => {
+  const services = buildDefaultServices();
+  const app = createPlatformServer(services);
+  const port = await app.start(0);
+
+  try {
+    const bootstrapRes = await fetch(`http://127.0.0.1:${port}/api/auth/session`);
+    const bootstrapPayload = await bootstrapRes.json();
+    assert.equal(bootstrapRes.status, 200);
+    assert.equal(bootstrapPayload.session.userId, 'p1');
+
+    const loginRes = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'Linus' }),
+    });
+    const loginPayload = await loginRes.json();
+    assert.equal(loginRes.status, 200);
+    assert.equal(loginPayload.session.userId, 'p2');
+
+    const registerRes = await fetch(`http://127.0.0.1:${port}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'RiverFox' }),
+    });
+    const registerPayload = await registerRes.json();
+    assert.equal(registerRes.status, 200);
+    assert.equal(registerPayload.created, true);
+    assert.equal(registerPayload.session.username, 'RiverFox');
+    assert.ok(registerPayload.session.userId.length > 0);
+  } finally {
+    await app.stop();
+  }
+});

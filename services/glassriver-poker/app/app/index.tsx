@@ -1,13 +1,34 @@
 import { Link } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useAuth } from './lib/auth';
 
 export default function HomeScreen() {
+  const { user, loading } = useAuth();
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.hero}>
         <Text style={styles.eyebrow}>ZERO-RAKE POKER</Text>
         <Text style={styles.title}>GlassRiver</Text>
         <Text style={styles.subtitle}>No house edge. No percentage from pots. Premium dealer-led table experience.</Text>
+      </View>
+
+      <View style={styles.sessionCard}>
+        <Text style={styles.cardTitle}>Active player</Text>
+        <Text style={styles.metric}>{loading ? 'Loading session...' : user ? `${user.username} (${user.userId})` : 'No active session'}</Text>
+        <Text style={styles.metric}>{user ? `Trust score ${user.trust.trustScore} • ${user.trust.verifiedHuman ? 'Verified Human' : 'Unverified'}` : 'Sign in or create an account to personalize coaching and matchmaking.'}</Text>
+        <View style={styles.row}>
+          <Link href="/login" asChild>
+            <Pressable style={styles.secondaryButton}>
+              <Text style={styles.secondaryText}>Login</Text>
+            </Pressable>
+          </Link>
+          <Link href="/register" asChild>
+            <Pressable style={styles.secondaryButton}>
+              <Text style={styles.secondaryText}>Register</Text>
+            </Pressable>
+          </Link>
+        </View>
       </View>
 
       <View style={styles.card}>
@@ -90,6 +111,14 @@ const styles = StyleSheet.create({
     padding: 20,
     borderWidth: 1,
     borderColor: '#23304E',
+    gap: 10,
+  },
+  sessionCard: {
+    backgroundColor: '#11213E',
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#315C97',
     gap: 10,
   },
   cardTitle: {

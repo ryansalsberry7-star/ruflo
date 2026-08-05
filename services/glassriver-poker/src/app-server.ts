@@ -60,6 +60,9 @@ export function buildDefaultServices(): PlatformServices {
     community.setOnlineStatus(user.id, true);
   }
 
+  community.followPlayer('p1', 'p2');
+  community.followPlayer('p1', 'p3');
+
   community.createClub({
     ownerId: 'p1',
     name: 'GlassRiver Founders Club',
@@ -138,6 +141,58 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
       service: 'glassriver-poker',
       zeroRake: services.poker.getZeroRakePolicy(),
       timestamp: new Date().toISOString(),
+    });
+    return;
+  }
+
+  if (method === 'GET' && pathname === '/api/auth/session') {
+    const defaultUser = services.users.getUser('p1');
+    sendJson(res, 200, {
+      session: buildAuthSessionPayload(services, defaultUser.id, defaultUser.username),
+      source: 'bootstrap',
+    });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/api/auth/login') {
+    const body = await readJsonBody(req);
+    const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
+    const username = typeof body.username === 'string' ? body.username.trim() : '';
+
+    const user = userId
+      ? services.users.hasUser(userId)
+        ? services.users.getUser(userId)
+        : null
+      : username
+        ? services.users.findByUsername(username)
+        : null;
+
+    if (!user) {
+      sendJson(res, 404, { error: 'User not found. Register first or use an existing profile.' });
+      return;
+    }
+
+    sendJson(res, 200, {
+      session: buildAuthSessionPayload(services, user.id, user.username),
+    });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/api/auth/register') {
+    const body = await readJsonBody(req);
+    const username = String(body.username ?? '').trim();
+    if (!username) {
+      sendJson(res, 400, { error: 'username is required' });
+      return;
+    }
+
+    const requestedUserId = String(body.userId ?? '').trim();
+    const userId = createAvailableUserId(services, requestedUserId || username);
+    const user = services.users.createUser(userId, username);
+
+    sendJson(res, 200, {
+      session: buildAuthSessionPayload(services, user.id, user.username),
+      created: true,
     });
     return;
   }
@@ -539,4 +594,34 @@ function sendJson(res: ServerResponse, status: number, payload: unknown): void {
   res.statusCode = status;
   res.setHeader('content-type', 'application/json; charset=utf-8');
   res.end(JSON.stringify(payload));
+}
+
+function buildAuthSessionPayload(services: PlatformServices, userId: string, username: string) {
+  services.wallet.ensureWallet(userId);
+  services.trust.ensurePlayer(userId);
+  services.community.ensureProfile(userId, username);
+  services.community.setOnlineStatus(userId, true);
+
+  return {
+    userId,
+    username,
+    trust: services.trust.getPlayerTrust(userId),
+  };
+}
+
+function createAvailableUserId(services: PlatformServices, raw: string): string {
+  const base =
+    raw
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'player';
+
+  let candidate = base;
+  let counter = 1;
+  while (services.users.hasUser(candidate)) {
+    candidate = `${base}-${counter}`;
+    counter += 1;
+  }
+  return candidate;
 }

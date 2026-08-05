@@ -1,6 +1,7 @@
 import { Link } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useAuth } from './lib/auth';
 import { getJson } from './lib/api';
 
 interface SettledHand {
@@ -15,9 +16,9 @@ interface HandAnalysis {
 }
 
 const TABLE_ID = 'cash-aurora';
-const USER_ID = 'p1';
 
 export default function HandHistoryScreen() {
+  const { user, loading: authLoading } = useAuth();
   const [hands, setHands] = useState<SettledHand[]>([]);
   const [analysisByHand, setAnalysisByHand] = useState<Record<string, HandAnalysis>>({});
   const [loading, setLoading] = useState(true);
@@ -47,10 +48,15 @@ export default function HandHistoryScreen() {
   }, []);
 
   async function analyzeHand(handId: string): Promise<void> {
+    if (!user?.userId) {
+      setError('Sign in to analyze hands.');
+      return;
+    }
+
     setAnalyzingHandId(handId);
     try {
       const response = await getJson<{ analysis: HandAnalysis }>(
-        `/api/coach/hands/${handId}/analyze?userId=${USER_ID}&tableId=${TABLE_ID}`
+        `/api/coach/hands/${handId}/analyze?userId=${user.userId}&tableId=${TABLE_ID}`
       );
       setAnalysisByHand((current) => ({ ...current, [handId]: response.analysis }));
     } catch (analysisError) {
@@ -60,10 +66,18 @@ export default function HandHistoryScreen() {
     }
   }
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <View style={styles.centered}>
         <Text style={styles.loadingText}>Loading hand history...</Text>
+      </View>
+    );
+  }
+
+  if (!user) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.errorText}>Sign in to load hand history analysis.</Text>
       </View>
     );
   }

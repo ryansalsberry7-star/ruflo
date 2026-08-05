@@ -35,6 +35,20 @@ export class UserService {
     return user;
   }
 
+  hasUser(id: string): boolean {
+    return this.users.has(id);
+  }
+
+  findByUsername(username: string): UserProfile | null {
+    const normalized = username.trim().toLowerCase();
+    for (const user of this.users.values()) {
+      if (user.username.trim().toLowerCase() === normalized) {
+        return user;
+      }
+    }
+    return null;
+  }
+
   addFriend(userId: string, friendId: string): UserProfile {
     const user = this.getUser(userId);
     if (user.friends.includes(friendId)) return user;
