@@ -1,4 +1,5 @@
 import { Link } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
@@ -21,6 +22,11 @@ interface SeatView {
   status: 'waiting' | 'thinking' | 'betting' | 'calling' | 'raising' | 'folded' | 'all-in' | 'disconnected' | 'sitting-out';
   timeBankSeconds: number;
   isDealer: boolean;
+}
+
+interface QuickBet {
+  label: string;
+  value: number;
 }
 
 const seats: SeatView[] = [
@@ -67,7 +73,7 @@ export default function TableScreen() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setCountdown((prev) => (prev <= 0 ? 15 : prev - 1));
+      setCountdown((prev: number) => (prev <= 0 ? 15 : prev - 1));
     }, 1000);
     return () => clearInterval(interval);
   }, []);
@@ -109,7 +115,7 @@ export default function TableScreen() {
   const chipScale = potPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
   const dealTranslate = dealAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 32] });
 
-  const quickBets = useMemo(
+  const quickBets = useMemo<QuickBet[]>(
     () => [
       { label: 'Min', value: 20 },
       { label: '1/2 Pot', value: 70 },
@@ -118,6 +124,19 @@ export default function TableScreen() {
     ],
     []
   );
+
+  const triggerFeedback = async (kind: 'selection' | 'success' = 'selection') => {
+    if (!hapticsEnabled) return;
+    try {
+      if (kind === 'success') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        return;
+      }
+      await Haptics.selectionAsync();
+    } catch {
+      // Haptics can fail on unsupported devices/simulators; ignore gracefully.
+    }
+  };
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -139,7 +158,14 @@ export default function TableScreen() {
 
       <View style={styles.themeRow}>
         {dealerThemes.map((theme) => (
-          <Pressable key={theme} style={[styles.themeChip, selectedTheme === theme && styles.themeChipActive]} onPress={() => setSelectedTheme(theme)}>
+          <Pressable
+            key={theme}
+            style={[styles.themeChip, selectedTheme === theme && styles.themeChipActive]}
+            onPress={() => {
+              setSelectedTheme(theme);
+              void triggerFeedback('selection');
+            }}
+          >
             <Text style={[styles.themeChipText, selectedTheme === theme && styles.themeChipTextActive]}>{theme}</Text>
           </Pressable>
         ))}
@@ -197,8 +223,15 @@ export default function TableScreen() {
           <View style={[styles.sliderFill, { width: `${Math.min(100, (betValue / 320) * 100)}%` }]} />
         </View>
         <View style={styles.quickRow}>
-          {quickBets.map((quick) => (
-            <Pressable key={quick.label} style={styles.quickButton} onPress={() => setBetValue(quick.value)}>
+          {quickBets.map((quick: QuickBet) => (
+            <Pressable
+              key={quick.label}
+              style={styles.quickButton}
+              onPress={() => {
+                setBetValue(quick.value);
+                void triggerFeedback('selection');
+              }}
+            >
               <Text style={styles.quickText}>{quick.label}</Text>
             </Pressable>
           ))}
@@ -206,7 +239,13 @@ export default function TableScreen() {
 
         <View style={styles.actionsGrid}>
           {['Fold', 'Check', 'Call', 'Raise', 'All-in'].map((label) => (
-            <Pressable key={label} style={[styles.actionButton, label === 'Fold' && styles.foldButton, label === 'Raise' && styles.raiseButton]}>
+            <Pressable
+              key={label}
+              style={[styles.actionButton, label === 'Fold' && styles.foldButton, label === 'Raise' && styles.raiseButton]}
+              onPress={() => {
+                void triggerFeedback(label === 'All-in' ? 'success' : 'selection');
+              }}
+            >
               <Text style={styles.actionButtonText}>{label}</Text>
             </Pressable>
           ))}

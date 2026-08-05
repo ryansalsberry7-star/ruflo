@@ -1,53 +1,72 @@
 import { Link } from 'expo-router';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 export default function HomeScreen() {
   return (
-    <View style={styles.screen}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.hero}>
         <Text style={styles.eyebrow}>ZERO-RAKE POKER</Text>
         <Text style={styles.title}>GlassRiver</Text>
-        <Text style={styles.subtitle}>Transparent play. Player-first pots. Premium fintech poker.</Text>
+        <Text style={styles.subtitle}>No house edge. No percentage from pots. Premium dealer-led table experience.</Text>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Today’s tables</Text>
-        <Text style={styles.metric}>$0.05 / $0.10 • 6 seats • 24 online</Text>
-        <Text style={styles.metric}>$1 / $2 • 9 seats • 88 online</Text>
-        <Text style={styles.metric}>$5 / $10 • 6 seats • 43 online</Text>
+        <Text style={styles.cardTitle}>Live network status</Text>
+        <Text style={styles.metric}>42 active tables • 516 players online</Text>
+        <Text style={styles.metric}>Median action latency: 68ms</Text>
+        <Text style={styles.metric}>Dealer mode: server authoritative</Text>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Trust center</Text>
+        <Text style={styles.metric}>Hand verification available after every settled hand.</Text>
+        <Link href="/fair-play" asChild>
+          <Pressable style={styles.inlineButton}>
+            <Text style={styles.inlineButtonText}>Open fair play center</Text>
+          </Pressable>
+        </Link>
       </View>
 
       <View style={styles.actions}>
         <Link href="/lobby" asChild>
           <Pressable style={styles.primaryButton}>
-            <Text style={styles.primaryText}>Enter lobby</Text>
+            <Text style={styles.primaryText}>Enter poker lobby</Text>
           </Pressable>
         </Link>
-        <Link href="/wallet" asChild>
-          <Pressable style={styles.secondaryButton}>
-            <Text style={styles.secondaryText}>Open wallet</Text>
-          </Pressable>
-        </Link>
+        <View style={styles.row}>
+          <Link href="/wallet" asChild>
+            <Pressable style={styles.secondaryButton}>
+              <Text style={styles.secondaryText}>Wallet</Text>
+            </Pressable>
+          </Link>
+          <Link href="/table" asChild>
+            <Pressable style={styles.secondaryButton}>
+              <Text style={styles.secondaryText}>Quick seat</Text>
+            </Pressable>
+          </Link>
+        </View>
       </View>
 
       <View style={styles.footerRow}>
-        <Text style={styles.footerText}>No rake • No house edge • Real-time tables</Text>
+        <Text style={styles.footerText}>No rake • No house edge • Verified fair-play logs</Text>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: {
-    flex: 1,
     backgroundColor: '#060816',
+  },
+  content: {
     paddingHorizontal: 24,
-    paddingTop: 56,
+    paddingTop: 58,
     paddingBottom: 24,
-    justifyContent: 'space-between',
+    gap: 14,
   },
   hero: {
     gap: 8,
+    marginBottom: 4,
   },
   eyebrow: {
     color: '#7ED3FF',
@@ -57,7 +76,7 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#F8F7FF',
-    fontSize: 40,
+    fontSize: 42,
     fontWeight: '800',
   },
   subtitle: {
@@ -81,9 +100,29 @@ const styles = StyleSheet.create({
   metric: {
     color: '#BFC7E2',
     fontSize: 14,
+    lineHeight: 20,
+  },
+  inlineButton: {
+    marginTop: 2,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#486294',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: '#1A2744',
+  },
+  inlineButtonText: {
+    color: '#D9E7FF',
+    fontWeight: '700',
+    fontSize: 12,
   },
   actions: {
     gap: 12,
+  },
+  row: {
+    flexDirection: 'row',
+    gap: 10,
   },
   primaryButton: {
     backgroundColor: '#3E8FFF',
@@ -97,6 +136,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   secondaryButton: {
+    flex: 1,
     borderColor: '#4C5F8B',
     borderWidth: 1,
     borderRadius: 16,
@@ -110,6 +150,7 @@ const styles = StyleSheet.create({
   },
   footerRow: {
     alignItems: 'center',
+    paddingTop: 4,
   },
   footerText: {
     color: '#7C8AAF',

@@ -2,9 +2,34 @@
   "expo": {
     "name": "GlassRiver Poker",
     "slug": "glassriver-poker",
+    "version": "1.0.0",
     "scheme": "glassriver",
     "platforms": ["ios", "android", "web"],
     "orientation": "portrait",
-    "userInterfaceStyle": "dark"
+    "userInterfaceStyle": "dark",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "ios": {
+      "bundleIdentifier": "io.glassriver.poker",
+      "buildNumber": "1",
+      "supportsTablet": false,
+      "requireFullScreen": true,
+      "usesAppleSignIn": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": []
+      }
+    },
+    "android": {
+      "package": "io.glassriver.poker",
+      "versionCode": 1
+    },
+    "experiments": {
+      "typedRoutes": true
+    }
   }
 }
