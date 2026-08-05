@@ -180,7 +180,7 @@ test('tracks qualifying high hands with non-cash rewards and shareable highlight
 });
 
 test('persists auth sessions across service restarts', () => {
-  const tempDir = mkdtempSync(join(tmpdir(), 'glassriver-sessions-'));
+  const tempDir = mkdtempSync(join(tmpdir(), 'truestack-sessions-'));
   const storagePath = join(tempDir, 'auth-sessions.json');
 
   try {

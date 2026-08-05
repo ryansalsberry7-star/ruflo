@@ -60,7 +60,7 @@ export const TOURNAMENT_LISTINGS: TournamentListing[] = [
   },
   {
     id: 'weekend-major',
-    name: 'Weekend GlassRiver Major',
+    name: 'Weekend TRUE STACK Major',
     entryFee: 100,
     registeredPlayers: 220,
     maxPlayers: 1000,

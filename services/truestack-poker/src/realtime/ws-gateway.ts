@@ -68,7 +68,7 @@ export function attachRealtimeGateway(options: GatewayOptions) {
       JSON.stringify({
         event: 'connected',
         payload: {
-          message: 'Connected to GlassRiver real-time gateway.',
+          message: 'Connected to TRUE STACK Poker real-time gateway.',
           serverAuthoritative: true,
         },
       })

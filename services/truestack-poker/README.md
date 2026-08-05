@@ -1,6 +1,6 @@
-# GlassRiver Poker
+# TRUE STACK Poker: Real Money Poker
 
-GlassRiver is a premium, zero-rake poker play-money beta built as a mobile-first product. The current implementation includes:
+TRUE STACK Poker is a premium, zero-rake poker experience built as a mobile-first product. The current implementation includes:
 
 - a server-authoritative Hold’em engine
 - an immutable wallet ledger
@@ -26,7 +26,7 @@ GlassRiver is a premium, zero-rake poker play-money beta built as a mobile-first
 Run the realtime service:
 
 ```bash
-cd services/glassriver-poker
+cd services/truestack-poker
 npm start
 ```
 
@@ -34,10 +34,28 @@ The server boots with a seeded table and exposes a WebSocket endpoint at `ws://l
 
 Current environment posture:
 
-- play-money only
-- no real-money wagering enabled
+- play-money by default; real-money mode is opt-in and OFF unless explicitly enabled
 - authenticated table actions required
 - moderation and trust mutation routes are internal/admin-gated
+
+### Real-money enablement (compliance-gated)
+
+Real-money play, deposits, and withdrawals are gated behind a compliance layer
+that is **default-deny**. Nothing is authorized until an operator opts in via
+environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `TRUESTACK_REALMONEY_ENABLED` | Set to `true` to enable real-money mode. Defaults to disabled. |
+| `TRUESTACK_AUTHORIZED_JURISDICTIONS` | Comma-separated allowlist of licensed regions (e.g. `US-NV,US-NJ`). Empty = no region authorized. |
+| `TRUESTACK_ADMIN_KEY` | Admin key used to resolve KYC reviews and moderation routes. |
+
+When enabled, every real-money action requires: verified KYC, an authorized
+jurisdiction, minimum age (21 by default), no active self-exclusion, and
+deposits within the account's daily limit. The payment rail is a pluggable
+`PaymentProcessor` interface — the bundled `MockPaymentProcessor` is for
+development only and holds no credentials; swap in a real processor for
+production.
 
 ### Phase 2 API Endpoints
 
@@ -59,6 +77,13 @@ Current environment posture:
 - `GET /api/tables/:tableId/replay/:handId`
 - `GET /api/hands/:handId/verification`
 - `GET /api/wallet/:userId`
+- `POST /api/wallet/deposit` (authenticated, compliance-gated)
+- `POST /api/wallet/withdraw` (authenticated, compliance-gated)
+- `GET /api/compliance/region?region=US-NV`
+- `GET /api/compliance/status/:userId` (authenticated)
+- `POST /api/compliance/kyc/submit` (authenticated)
+- `POST /api/compliance/self-exclude` (authenticated)
+- `POST /api/compliance/limits` (authenticated)
 - `GET /api/high-hands/leaderboards`
 - `GET /api/high-hands/history/:userId`
 - `GET /api/high-hands/highlights/:handId`
@@ -85,20 +110,21 @@ The platform intentionally avoids claiming "provably fair" cryptographic proofs.
 
 ### Admin-gated moderation routes
 
-The following routes are intended for internal operations only and should be protected with `GLASSRIVER_ADMIN_KEY` in deployment:
+The following routes are intended for internal operations only and should be protected with `TRUESTACK_ADMIN_KEY` in deployment:
 
 - `POST /api/trust/:userId/verify-human`
 - `POST /api/trust/:userId/security-status`
 - `POST /api/trust/:userId/anti-cheat-signal`
 - `GET /api/trust/flagged`
 - `POST /api/trust/collusion-assessment`
+- `POST /api/compliance/kyc/:userId/resolve`
 
 ## Validation
 
 Run:
 
 ```bash
-cd services/glassriver-poker
+cd services/truestack-poker
 npm test
 ```
 

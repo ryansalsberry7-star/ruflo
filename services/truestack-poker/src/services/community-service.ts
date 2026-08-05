@@ -109,7 +109,7 @@ export class CommunityService {
       reportsResolved: 0,
       customization: {
         cardBack: 'classic-blue',
-        tableTheme: 'glassriver-noir',
+        tableTheme: 'truestack-noir',
         dealerAvatar: 'aurora-croupier',
         profileFrame: 'clean-silver',
         chipDesign: 'ceramic-black',
@@ -334,7 +334,7 @@ export class CommunityService {
   } {
     return {
       cardBacks: ['classic-blue', 'onyx-gold', 'aurora-neon'],
-      tableThemes: ['glassriver-noir', 'mahogany-lounge', 'monaco-night'],
+      tableThemes: ['truestack-noir', 'mahogany-lounge', 'monaco-night'],
       dealerAvatars: ['aurora-croupier', 'velvet-host', 'summit-pro'],
       profileFrames: ['clean-silver', 'champion-gold', 'founders-black'],
       chipDesigns: ['ceramic-black', 'ivory-classic', 'matte-carbon'],
@@ -357,7 +357,7 @@ export class CommunityService {
       next = this.ensureAchievement(next, {
         id: 'hands-1000',
         title: '1,000 Hands Played',
-        description: 'Tracked 1,000 hands at GlassRiver tables.',
+        description: 'Tracked 1,000 hands at TRUE STACK Poker tables.',
         rarity: 'rare',
       });
     }

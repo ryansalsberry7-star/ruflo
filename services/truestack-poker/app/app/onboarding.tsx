@@ -4,7 +4,7 @@ export default function OnboardingScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.eyebrow}>ONBOARDING</Text>
-      <Text style={styles.title}>Welcome to GlassRiver</Text>
+      <Text style={styles.title}>Welcome to TRUE STACK Poker</Text>
       <Text style={styles.subtitle}>This iOS review build is a play-money beta focused on fair-play verification, poker learning, and community competition.</Text>
 
       <View style={styles.card}>

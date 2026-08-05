@@ -179,7 +179,7 @@ export class HighHandService {
   private buildRewards(handName: string): HighHandRewardPackage {
     if (handName === 'royal flush') {
       return {
-        tournamentTickets: ['GlassRiver Major Ticket'],
+        tournamentTickets: ['TRUE STACK Major Ticket'],
         satelliteEntries: ['VIP Satellite Seat'],
         cosmeticItems: ['onyx-gold-card-back', 'royal-table-theme'],
         profileBadges: ['royal-flush-champion'],

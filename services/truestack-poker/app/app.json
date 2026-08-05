@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "GlassRiver Poker",
-    "slug": "glassriver-poker",
+    "name": "TRUE STACK Poker: Real Money Poker",
+    "slug": "truestack-poker",
     "version": "1.0.0",
-    "scheme": "glassriver",
+    "scheme": "truestack",
     "platforms": ["ios", "android", "web"],
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
@@ -14,7 +14,7 @@
       "fallbackToCacheTimeout": 0
     },
     "ios": {
-      "bundleIdentifier": "io.glassriver.poker",
+      "bundleIdentifier": "io.truestack.poker",
       "buildNumber": "1",
       "supportsTablet": false,
       "requireFullScreen": true,
@@ -25,7 +25,7 @@
       }
     },
     "android": {
-      "package": "io.glassriver.poker",
+      "package": "io.truestack.poker",
       "versionCode": 1
     },
     "experiments": {

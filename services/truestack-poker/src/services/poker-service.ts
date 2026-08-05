@@ -120,6 +120,11 @@ export class PokerService {
     return table;
   }
 
+  isPlayerSeated(tableId: string, playerId: string): boolean {
+    const table = this.tables.get(tableId);
+    return table ? table.players.some((entry) => entry.id === playerId) : false;
+  }
+
   listCashGames(filters?: { minBlind?: number; maxBlind?: number; speed?: StakeLevel['speed'] }): TableListing[] {
     const listings = Array.from(this.tables.values()).map((table) => {
       const stake = STAKE_LEVELS.find((entry) => entry.smallBlind === table.smallBlind && entry.bigBlind === table.bigBlind);
@@ -236,8 +241,7 @@ export class PokerService {
     const hand = this.activeDealerHands.get(tableId) ?? this.startDealerHandForTable(tableId);
     const showdown = this.resolveDealerShowdown(table, hand);
     const winners = showdown.winnerIds.length > 0 ? showdown.winnerIds : table.players.map((entry) => entry.id);
-    const payoutEach = winners.length > 0 ? Number((showdown.pot / winners.length).toFixed(2)) : 0;
-    const payouts: SettledPayout[] = winners.map((playerId) => ({ playerId, amount: payoutEach }));
+    const payouts: SettledPayout[] = splitPotEvenly(showdown.pot, winners);
 
     const verification = this.dealer.completeHand(hand, {
       pot: showdown.pot,
@@ -473,4 +477,18 @@ export class PokerService {
   private cardsForPlayer(hand: DealerHandState, playerId: string): Card[] {
     return [...(hand.holeCardsByPlayer[playerId] ?? []), ...hand.communityCards];
   }
+}
+
+// Split a pot across winners in whole cents so the payouts always sum to the pot;
+// any odd remaining cents go to the earliest-position winners.
+function splitPotEvenly(pot: number, winners: string[]): SettledPayout[] {
+  if (winners.length === 0) return [];
+  const totalCents = Math.round(pot * 100);
+  const baseCents = Math.floor(totalCents / winners.length);
+  let remainderCents = totalCents - baseCents * winners.length;
+  return winners.map((playerId) => {
+    const cents = baseCents + (remainderCents > 0 ? 1 : 0);
+    if (remainderCents > 0) remainderCents -= 1;
+    return { playerId, amount: cents / 100 };
+  });
 }

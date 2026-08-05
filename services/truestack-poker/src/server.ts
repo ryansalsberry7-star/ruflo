@@ -6,7 +6,7 @@ const targetPort = Number(process.env.PORT ?? '4040');
 
 const startedPort = await app.start(targetPort);
 
-console.log(`GlassRiver platform listening on http://localhost:${startedPort}`);
+console.log(`TRUE STACK Poker platform listening on http://localhost:${startedPort}`);
 console.log(`Realtime gateway listening on ws://localhost:${startedPort}/ws`);
 console.log('Zero-rake policy:', services.poker.getZeroRakePolicy());
 console.log('Compliance snapshot for p1:', services.compliance.getDecision('p1'));

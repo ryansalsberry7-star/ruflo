@@ -1,7 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-const AUTH_TOKEN_KEY = 'glassriver.auth-token';
+const AUTH_TOKEN_KEY = 'truestack.auth-token';
 
 function canUseWebStorage(): boolean {
   return Platform.OS === 'web' && typeof globalThis.localStorage !== 'undefined';

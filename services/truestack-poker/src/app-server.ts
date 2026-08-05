@@ -6,9 +6,11 @@ import { AnalyticsService } from './services/analytics-service.js';
 import { CoachService } from './services/coach-service.js';
 import { ComplianceService } from './services/compliance-service.js';
 import { CommunityService } from './services/community-service.js';
+import { FundingService } from './services/funding-service.js';
 import { HighHandService } from './services/high-hand-service.js';
 import { PaymentService } from './services/payment-service.js';
 import { PokerService } from './services/poker-service.js';
+import { RegionalGatingService } from './services/regional-gating-service.js';
 import { SessionService } from './services/session-service.js';
 import { TrustService } from './services/trust-service.js';
 import { UserService } from './services/user-service.js';
@@ -19,6 +21,8 @@ export interface PlatformServices {
   wallet: WalletService;
   payment: PaymentService;
   compliance: ComplianceService;
+  regionalGating: RegionalGatingService;
+  funding: FundingService;
   users: UserService;
   analytics: AnalyticsService;
   sessions: SessionService;
@@ -42,7 +46,14 @@ export function buildDefaultServices(): PlatformServices {
   const poker = new PokerService(highHands);
   const wallet = new WalletService();
   const payment = new PaymentService();
-  const compliance = new ComplianceService();
+  const realMoneyEnabled = process.env.TRUESTACK_REALMONEY_ENABLED === 'true';
+  const authorizedJurisdictions = (process.env.TRUESTACK_AUTHORIZED_JURISDICTIONS ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  const regionalGating = new RegionalGatingService(authorizedJurisdictions);
+  const compliance = new ComplianceService({ realMoneyEnabled, regionalGating });
+  const funding = new FundingService(wallet, payment, compliance);
   const users = new UserService();
   const analytics = new AnalyticsService();
   const sessions = new SessionService();
@@ -69,7 +80,7 @@ export function buildDefaultServices(): PlatformServices {
 
   community.createClub({
     ownerId: 'p1',
-    name: 'GlassRiver Founders Club',
+    name: 'TRUE STACK Founders Club',
     description: 'Invite-only home game community focused on fair-play and study.',
     isPrivate: true,
   });
@@ -80,11 +91,25 @@ export function buildDefaultServices(): PlatformServices {
     initialUsers.map((entry) => ({ id: entry.id, name: entry.username, stack: 1000 }))
   );
 
-  return { poker, wallet, payment, compliance, users, analytics, sessions, trust, community, coach, highHands };
+  return {
+    poker,
+    wallet,
+    payment,
+    compliance,
+    regionalGating,
+    funding,
+    users,
+    analytics,
+    sessions,
+    trust,
+    community,
+    coach,
+    highHands,
+  };
 }
 
 export function createPlatformServer(services: PlatformServices, options: PlatformServerOptions = {}) {
-  const adminKey = options.adminKey ?? process.env.GLASSRIVER_ADMIN_KEY?.trim() ?? null;
+  const adminKey = options.adminKey ?? process.env.TRUESTACK_ADMIN_KEY?.trim() ?? null;
   const server = createServer(async (req, res) => {
     try {
       await routeRequest(req, res, services, adminKey);
@@ -143,7 +168,7 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
   if (method === 'GET' && pathname === '/api/health') {
     sendJson(res, 200, {
       status: 'ok',
-      service: 'glassriver-poker',
+      service: 'truestack-poker',
       zeroRake: services.poker.getZeroRakePolicy(),
       timestamp: new Date().toISOString(),
     });
@@ -345,6 +370,136 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
     const handId = pathname.split('/')[3] ?? '';
     const verification = services.poker.getHandVerification(handId);
     sendJson(res, 200, { verification });
+    return;
+  }
+
+  if (method === 'GET' && pathname === '/api/compliance/region') {
+    const region = requestUrl.searchParams.get('region');
+    const decision = services.regionalGating.evaluate(region);
+    sendJson(res, 200, {
+      decision,
+      authorizedJurisdictions: services.regionalGating.listAuthorized(),
+      note: 'Real-money play requires an operator license covering the jurisdiction. Unlisted regions are blocked.',
+    });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/api/compliance/kyc/submit') {
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor) {
+      sendJson(res, 401, { error: 'Authentication required.' });
+      return;
+    }
+    const body = await readJsonBody(req);
+    const fullName = String(body.fullName ?? '').trim();
+    const dateOfBirth = String(body.dateOfBirth ?? '').trim();
+    const jurisdiction = String(body.jurisdiction ?? '').trim();
+    const documentType = String(body.documentType ?? '') as 'passport' | 'drivers-license' | 'national-id';
+    if (!fullName || !dateOfBirth || !jurisdiction || !['passport', 'drivers-license', 'national-id'].includes(documentType)) {
+      sendJson(res, 400, { error: 'fullName, dateOfBirth, jurisdiction, and a valid documentType are required.' });
+      return;
+    }
+    const kyc = services.compliance.submitKyc(actor.id, { fullName, dateOfBirth, jurisdiction, documentType });
+    sendJson(res, 200, { kyc });
+    return;
+  }
+
+  if (method === 'POST' && pathname.startsWith('/api/compliance/kyc/') && pathname.endsWith('/resolve')) {
+    if (!hasAdminAccess(req, adminKey)) {
+      sendJson(res, 403, { error: 'Admin authorization required.' });
+      return;
+    }
+    const userId = pathname.split('/')[4] ?? '';
+    const body = await readJsonBody(req);
+    const outcome = body.outcome === 'verified' ? 'verified' : 'rejected';
+    const reason = typeof body.reason === 'string' ? body.reason : undefined;
+    const kyc = services.compliance.resolveKyc(userId, outcome, reason);
+    sendJson(res, 200, { kyc });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/api/compliance/self-exclude') {
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor) {
+      sendJson(res, 401, { error: 'Authentication required.' });
+      return;
+    }
+    const body = await readJsonBody(req);
+    const profile = services.compliance.setSelfExclusion(actor.id, Boolean(body.enabled ?? true));
+    sendJson(res, 200, { profile });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/api/compliance/limits') {
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor) {
+      sendJson(res, 401, { error: 'Authentication required.' });
+      return;
+    }
+    const body = await readJsonBody(req);
+    const profile = services.compliance.setResponsibleGamingLimits(actor.id, {
+      maxDailyDeposit: typeof body.maxDailyDeposit === 'number' ? body.maxDailyDeposit : undefined,
+      maxSessionMinutes: typeof body.maxSessionMinutes === 'number' ? body.maxSessionMinutes : undefined,
+    });
+    sendJson(res, 200, { profile });
+    return;
+  }
+
+  if (method === 'GET' && pathname.startsWith('/api/compliance/status/')) {
+    const userId = pathname.split('/')[4] ?? '';
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor || actor.id !== userId) {
+      sendJson(res, 403, { error: 'Authorized access to compliance status is required.' });
+      return;
+    }
+    const jurisdiction = requestUrl.searchParams.get('jurisdiction');
+    sendJson(res, 200, {
+      decision: services.compliance.getDecision(userId, { jurisdiction }),
+      kyc: services.compliance.getKycProfile(userId),
+      responsibleGaming: services.compliance.getResponsibleGamingProfile(userId),
+    });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/api/wallet/deposit') {
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor) {
+      sendJson(res, 401, { error: 'Authentication required.' });
+      return;
+    }
+    const body = await readJsonBody(req);
+    const result = await services.funding.deposit({
+      accountId: actor.id,
+      amount: Number(body.amount ?? 0),
+      mode: body.mode === 'instant' ? 'instant' : 'standard',
+      jurisdiction: typeof body.jurisdiction === 'string' ? body.jurisdiction : null,
+    });
+    if (!result.ok) {
+      sendJson(res, result.code === 'compliance-blocked' ? 403 : 402, { error: result.code, reasons: result.reasons });
+      return;
+    }
+    sendJson(res, 200, { wallet: result.wallet, transaction: result.transaction });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/api/wallet/withdraw') {
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor) {
+      sendJson(res, 401, { error: 'Authentication required.' });
+      return;
+    }
+    const body = await readJsonBody(req);
+    const result = await services.funding.withdraw({
+      accountId: actor.id,
+      amount: Number(body.amount ?? 0),
+      mode: body.mode === 'instant' ? 'instant' : 'standard',
+      jurisdiction: typeof body.jurisdiction === 'string' ? body.jurisdiction : null,
+    });
+    if (!result.ok) {
+      sendJson(res, result.code === 'compliance-blocked' ? 403 : 402, { error: result.code, reasons: result.reasons });
+      return;
+    }
+    sendJson(res, 200, { wallet: result.wallet, transaction: result.transaction });
     return;
   }
 
@@ -634,12 +789,34 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
     const userId = actor.id;
     const username = actor.username;
     const buyIn = Number(body.buyIn ?? 0);
+    if (!Number.isFinite(buyIn) || buyIn < 0) {
+      sendJson(res, 400, { error: 'buyIn must be a non-negative number.' });
+      return;
+    }
 
     services.users.createUser(userId, username);
     services.trust.ensurePlayer(userId);
     services.community.ensureProfile(userId, username);
-    if (buyIn > 0) {
-      services.wallet.transferForBuyIn(userId, buyIn, tableId);
+
+    // In real-money mode a seat requires a passing compliance decision (KYC + region + RG).
+    if (services.compliance.isRealMoneyEnabled()) {
+      const jurisdiction = typeof body.jurisdiction === 'string' ? body.jurisdiction : null;
+      const decision = services.compliance.getDecision(userId, { jurisdiction });
+      if (!decision.canPlayRealMoney) {
+        sendJson(res, 403, { error: 'compliance-blocked', reasons: decision.reasons });
+        return;
+      }
+    }
+
+    // Only charge a buy-in when the player is not already seated, so rejoining does not double-charge.
+    const alreadySeated = services.poker.isPlayerSeated(tableId, userId);
+    if (!alreadySeated && buyIn > 0) {
+      try {
+        services.wallet.transferForBuyIn(userId, buyIn, tableId);
+      } catch (error) {
+        sendJson(res, 402, { error: error instanceof Error ? error.message : 'Buy-in failed.' });
+        return;
+      }
     } else {
       services.wallet.ensureWallet(userId);
     }

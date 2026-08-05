@@ -40,7 +40,12 @@ export class WalletService {
   }
 
   transferForBuyIn(accountId: string, amount: number, tableId: string): WalletState {
-    return this.record(accountId, 'buy-in', -Math.abs(amount), { tableId });
+    const buyIn = Math.abs(amount);
+    const wallet = this.ensureWallet(accountId);
+    if (buyIn > wallet.availableChips) {
+      throw new Error('Insufficient wallet balance for requested buy-in.');
+    }
+    return this.record(accountId, 'buy-in', -buyIn, { tableId });
   }
 
   creditWinnings(accountId: string, amount: number, tableId: string): WalletState {

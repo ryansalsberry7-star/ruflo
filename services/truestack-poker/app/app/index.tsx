@@ -40,7 +40,7 @@ export default function HomeScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.hero}>
         <Text style={styles.eyebrow}>ZERO-RAKE POKER</Text>
-        <Text style={styles.title}>GlassRiver</Text>
+        <Text style={styles.title}>TRUE STACK Poker</Text>
         <Text style={styles.subtitle}>No house edge. No percentage from pots. Premium dealer-led play-money table experience for this App Store build.</Text>
       </View>
 
