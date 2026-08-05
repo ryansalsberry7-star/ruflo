@@ -24,6 +24,7 @@ export interface PlatformServerOptions {
   gateway?: {
     path?: string;
     disconnectGraceMs?: number;
+    turnActionMs?: number;
   };
 }
 
@@ -74,6 +75,7 @@ export function createPlatformServer(services: PlatformServices, options: Platfo
     },
     path: options.gateway?.path,
     disconnectGraceMs: options.gateway?.disconnectGraceMs,
+    turnActionMs: options.gateway?.turnActionMs,
   });
 
   return {
@@ -137,6 +139,13 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
     return;
   }
 
+  if (method === 'GET' && pathname.startsWith('/api/tournaments/') && pathname.endsWith('/registrations')) {
+    const tournamentId = pathname.split('/')[3] ?? '';
+    const registrations = services.poker.listTournamentRegistrations(tournamentId);
+    sendJson(res, 200, { tournamentId, registrations });
+    return;
+  }
+
   if (method === 'GET' && pathname.startsWith('/api/tables/') && pathname.endsWith('/hand-history')) {
     const tableId = pathname.split('/')[3] ?? '';
     sendJson(res, 200, { tableId, history: services.poker.getHandHistory(tableId) });
@@ -181,6 +190,18 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
     const action = actionEnvelopeSchema.parse(body.action);
     const table = services.poker.applyPlayerAction(tableId, userId, action.type, action.amount ?? 0);
     sendJson(res, 200, { table });
+    return;
+  }
+
+  if (method === 'POST' && pathname.startsWith('/api/tournaments/') && pathname.endsWith('/register')) {
+    const tournamentId = pathname.split('/')[3] ?? '';
+    const body = await readJsonBody(req);
+    const userId = String(body.userId ?? 'guest');
+    const username = String(body.username ?? userId);
+
+    services.users.createUser(userId, username);
+    const registration = services.poker.registerTournament(tournamentId, userId);
+    sendJson(res, 200, { registration });
     return;
   }
 

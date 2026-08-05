@@ -105,3 +105,41 @@ test('marks disconnected players as timed out and auto-folds after grace window'
     await app.stop();
   }
 });
+
+test('forces fold when per-turn action timer expires', async () => {
+  const services = buildDefaultServices();
+  const app = createPlatformServer(services, {
+    gateway: {
+      disconnectGraceMs: 500,
+      turnActionMs: 40,
+    },
+  });
+  const port = await app.start(0);
+
+  const baseUrl = `ws://127.0.0.1:${port}/ws`;
+  const observer = await openSocket(baseUrl);
+
+  try {
+    observer.send(JSON.stringify({ event: 'auth', payload: { userId: 'p2', tableId: 'cash-aurora' } }));
+    await waitForEvent(observer, 'auth_ok');
+    observer.send(JSON.stringify({ event: 'subscribe_table', payload: { tableId: 'cash-aurora' } }));
+    await waitForEvent(observer, 'table_sync');
+
+    const timerStarted = await waitForEvent(observer, 'turn_timer_started');
+    assert.equal(timerStarted.payload?.tableId, 'cash-aurora');
+    const expectedTimedOutUser = String(timerStarted.payload?.currentTurn ?? '');
+    assert.ok(expectedTimedOutUser.length > 0);
+
+    const timedOut = await waitForEvent(observer, 'turn_action_timed_out');
+    assert.equal(timedOut.payload?.userId, expectedTimedOutUser);
+
+    const table = services.poker.getTable('cash-aurora');
+    const timedOutSeat = table.players.find((entry) => entry.id === expectedTimedOutUser);
+    assert.ok(timedOutSeat);
+    assert.equal(timedOutSeat?.folded, true);
+    assert.notEqual(table.currentTurn, expectedTimedOutUser);
+  } finally {
+    observer.close();
+    await app.stop();
+  }
+});

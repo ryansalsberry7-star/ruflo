@@ -85,3 +85,30 @@ test('accepts direct multiplayer action endpoint updates', async () => {
     await app.stop();
   }
 });
+
+test('registers players into tournaments and exposes registration list', async () => {
+  const services = buildDefaultServices();
+  const app = createPlatformServer(services);
+  const port = await app.start(0);
+
+  try {
+    const registerRes = await fetch(`http://127.0.0.1:${port}/api/tournaments/daily-royal/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userId: 'p7', username: 'Ivy' }),
+    });
+
+    const registerPayload = await registerRes.json();
+    assert.equal(registerRes.status, 200);
+    assert.equal(registerPayload.registration.userId, 'p7');
+
+    const listRes = await fetch(`http://127.0.0.1:${port}/api/tournaments/daily-royal/registrations`);
+    const listPayload = await listRes.json();
+    assert.equal(listRes.status, 200);
+    assert.ok(Array.isArray(listPayload.registrations));
+    assert.equal(listPayload.registrations.length, 1);
+    assert.equal(listPayload.registrations[0].userId, 'p7');
+  } finally {
+    await app.stop();
+  }
+});

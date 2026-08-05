@@ -32,13 +32,15 @@ interface GatewayOptions {
   services: GatewayServices;
   path?: string;
   disconnectGraceMs?: number;
+  turnActionMs?: number;
 }
 
 export function attachRealtimeGateway(options: GatewayOptions) {
-  const { server, services, path = '/ws', disconnectGraceMs = 15_000 } = options;
+  const { server, services, path = '/ws', disconnectGraceMs = 15_000, turnActionMs = 20_000 } = options;
   const wss = new WebSocketServer({ noServer: true });
   const clients = new Map<WebSocket, ClientSession>();
   const pendingDisconnects = new Map<string, PendingDisconnect>();
+  const tableTurnTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   const onUpgrade = (request: IncomingMessage, socket: import('node:net').Socket, head: Buffer) => {
     if (!isUpgradePathMatch(request, path)) {
@@ -78,6 +80,7 @@ export function attachRealtimeGateway(options: GatewayOptions) {
             const recovered = services.sessions.consumeReconnectToken(reconnectToken);
             clearPendingDisconnect(pendingDisconnects, makePresenceKey(recovered.userId, recovered.tableId));
             clients.set(socket, { ...session, userId: recovered.userId, tableId: recovered.tableId });
+            scheduleTurnTimeout(tableTurnTimers, services, clients, recovered.tableId, turnActionMs);
             socket.send(
               JSON.stringify({
                 event: 'reconnect_ok',
@@ -118,6 +121,7 @@ export function attachRealtimeGateway(options: GatewayOptions) {
           const tableId = String(message.payload?.tableId ?? '');
           const table = services.poker.getTable(tableId);
           clients.set(socket, { ...session, tableId });
+          scheduleTurnTimeout(tableTurnTimers, services, clients, tableId, turnActionMs);
           socket.send(JSON.stringify({ event: 'table_sync', payload: { table } }));
           return;
         }
@@ -127,6 +131,7 @@ export function attachRealtimeGateway(options: GatewayOptions) {
           const actionData = actionEnvelopeSchema.parse(message.payload?.action);
           const table = services.poker.applyPlayerAction(tableId, session.userId, actionData.type, actionData.amount ?? 0);
           broadcastTable(clients, tableId, { event: 'table_update', payload: { table } });
+          scheduleTurnTimeout(tableTurnTimers, services, clients, tableId, turnActionMs);
           return;
         }
 
@@ -134,6 +139,7 @@ export function attachRealtimeGateway(options: GatewayOptions) {
           const tableId = String(message.payload?.tableId ?? '');
           const table = services.poker.advanceStreet(tableId);
           broadcastTable(clients, tableId, { event: 'street_update', payload: { table } });
+          scheduleTurnTimeout(tableTurnTimers, services, clients, tableId, turnActionMs);
           return;
         }
 
@@ -145,6 +151,7 @@ export function attachRealtimeGateway(options: GatewayOptions) {
             services.analytics.trackHand(payout.playerId, 120, settled.totalPot, payout.amount > 0);
           }
           broadcastTable(clients, tableId, { event: 'hand_settled', payload: settled });
+          clearTableTurnTimer(tableTurnTimers, tableId);
           return;
         }
 
@@ -170,12 +177,13 @@ export function attachRealtimeGateway(options: GatewayOptions) {
 
       const timeout = setTimeout(() => {
         pendingDisconnects.delete(presenceKey);
-        const table = services.poker.applyPlayerAction(session.tableId as string, session.userId, 'fold', 0);
+        const table = services.poker.forceFoldForTimeout(session.tableId as string, session.userId);
         broadcastTable(clients, session.tableId as string, {
           event: 'player_timed_out',
           payload: { userId: session.userId, tableId: session.tableId },
         });
         broadcastTable(clients, session.tableId as string, { event: 'table_update', payload: { table } });
+        scheduleTurnTimeout(tableTurnTimers, services, clients, session.tableId as string, turnActionMs);
       }, disconnectGraceMs);
 
       pendingDisconnects.set(presenceKey, {
@@ -207,6 +215,11 @@ export function attachRealtimeGateway(options: GatewayOptions) {
       }
       pendingDisconnects.clear();
 
+      for (const timer of tableTurnTimers.values()) {
+        clearTimeout(timer);
+      }
+      tableTurnTimers.clear();
+
       for (const session of clients.values()) {
         if (session.socket.readyState === session.socket.OPEN) {
           session.socket.close();
@@ -230,6 +243,48 @@ function clearPendingDisconnect(pendingDisconnects: Map<string, PendingDisconnec
   if (!pending) return;
   clearTimeout(pending.timeout);
   pendingDisconnects.delete(key);
+}
+
+function clearTableTurnTimer(tableTurnTimers: Map<string, ReturnType<typeof setTimeout>>, tableId: string): void {
+  const timer = tableTurnTimers.get(tableId);
+  if (!timer) return;
+  clearTimeout(timer);
+  tableTurnTimers.delete(tableId);
+}
+
+function scheduleTurnTimeout(
+  tableTurnTimers: Map<string, ReturnType<typeof setTimeout>>,
+  services: GatewayServices,
+  clients: Map<WebSocket, ClientSession>,
+  tableId: string,
+  turnActionMs: number
+): void {
+  clearTableTurnTimer(tableTurnTimers, tableId);
+
+  const currentTurn = services.poker.getCurrentTurn(tableId);
+  if (!currentTurn) return;
+
+  const expiresAt = Date.now() + turnActionMs;
+  broadcastTable(clients, tableId, {
+    event: 'turn_timer_started',
+    payload: { tableId, currentTurn, turnActionMs, expiresAt },
+  });
+
+  const timer = setTimeout(() => {
+    tableTurnTimers.delete(tableId);
+    const actingPlayer = services.poker.getCurrentTurn(tableId);
+    if (!actingPlayer) return;
+
+    const table = services.poker.forceFoldForTimeout(tableId, actingPlayer);
+    broadcastTable(clients, tableId, {
+      event: 'turn_action_timed_out',
+      payload: { tableId, userId: actingPlayer },
+    });
+    broadcastTable(clients, tableId, { event: 'table_update', payload: { table } });
+    scheduleTurnTimeout(tableTurnTimers, services, clients, tableId, turnActionMs);
+  }, turnActionMs);
+
+  tableTurnTimers.set(tableId, timer);
 }
 
 function isUpgradePathMatch(request: IncomingMessage, path: string): boolean {
