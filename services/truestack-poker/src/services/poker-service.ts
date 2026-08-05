@@ -190,7 +190,17 @@ export class PokerService {
   }
 
   forceFoldForTimeout(tableId: string, playerId: string): TableState {
-    return this.applyPlayerAction(tableId, playerId, 'fold', 0);
+    const current = this.getTable(tableId);
+    // The hand may have advanced between the timer being scheduled and firing;
+    // folding a player who is no longer to act would throw, so no-op instead.
+    if (current.currentTurn !== playerId) {
+      return current;
+    }
+    try {
+      return this.applyPlayerAction(tableId, playerId, 'fold', 0);
+    } catch {
+      return current;
+    }
   }
 
   getCurrentTurn(tableId: string): string | null {

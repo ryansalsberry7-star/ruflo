@@ -1,7 +1,7 @@
 import { Link } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
 import { useAuth } from './lib/auth';
 import { postJson, resolveWebSocketBaseUrl } from './lib/api';
 
@@ -31,6 +31,110 @@ interface TableEventEnvelope {
 }
 
 const TABLE_ID = 'cash-aurora';
+const MAX_SEATS = 6;
+
+// Seat centre positions as fractions of the felt (slot 0 is the hero, bottom-centre).
+const SEAT_SLOTS = [
+  { x: 0.5, y: 0.9 },
+  { x: 0.11, y: 0.66 },
+  { x: 0.09, y: 0.27 },
+  { x: 0.5, y: 0.09 },
+  { x: 0.91, y: 0.27 },
+  { x: 0.89, y: 0.66 },
+];
+
+const SUIT_META: Record<string, { symbol: string; color: string }> = {
+  S: { symbol: '\u2660', color: '#0B1220' },
+  C: { symbol: '\u2663', color: '#0B1220' },
+  H: { symbol: '\u2665', color: '#D6304A' },
+  D: { symbol: '\u2666', color: '#D6304A' },
+};
+
+const AVATAR_COLORS = ['#3E8FFF', '#9B5CF6', '#22B07D', '#E0A83B', '#E0576B', '#3BB2E0'];
+
+function avatarColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function PlayingCard({ id, faceDown }: { id?: string; faceDown?: boolean }): JSX.Element {
+  if (faceDown || !id) {
+    return (
+      <View style={[cardStyles.card, cardStyles.cardBack]}>
+        <View style={cardStyles.cardBackPattern} />
+      </View>
+    );
+  }
+  const raw = id.toUpperCase();
+  const suit = raw.slice(-1);
+  const rank = raw.slice(0, -1) === 'T' ? '10' : raw.slice(0, -1);
+  const meta = SUIT_META[suit] ?? { symbol: '?', color: '#0B1220' };
+  return (
+    <View style={cardStyles.card}>
+      <Text style={[cardStyles.cardRank, { color: meta.color }]}>{rank}</Text>
+      <Text style={[cardStyles.cardSuit, { color: meta.color }]}>{meta.symbol}</Text>
+    </View>
+  );
+}
+
+interface SeatPodProps {
+  player: TablePlayer | null;
+  isHero: boolean;
+  isTurn: boolean;
+}
+
+function SeatPod({ player, isHero, isTurn }: SeatPodProps): JSX.Element {
+  if (!player) {
+    return (
+      <View style={[seatStyles.pod, seatStyles.emptyPod]}>
+        <View style={seatStyles.emptyAvatar}>
+          <Text style={seatStyles.emptyPlus}>+</Text>
+        </View>
+        <Text style={seatStyles.emptyLabel}>{isHero ? 'Taking seat\u2026' : 'Open seat'}</Text>
+      </View>
+    );
+  }
+  const status = player.folded
+    ? 'Folded'
+    : player.allIn
+      ? 'All-in'
+      : isTurn
+        ? 'Acting\u2026'
+        : 'Active';
+  return (
+    <View style={[seatStyles.pod, isHero && seatStyles.heroPod, isTurn && seatStyles.turnPod]}>
+      <View style={seatStyles.cardsRow}>
+        {!player.folded ? (
+          <>
+            <PlayingCard faceDown />
+            <PlayingCard faceDown />
+          </>
+        ) : null}
+      </View>
+      <View style={[seatStyles.avatar, { backgroundColor: avatarColor(player.name) }]}>
+        <Text style={seatStyles.avatarText}>{initials(player.name)}</Text>
+        {player.isDealer ? (
+          <View style={seatStyles.dealerButton}>
+            <Text style={seatStyles.dealerButtonText}>D</Text>
+          </View>
+        ) : null}
+      </View>
+      <Text style={seatStyles.name} numberOfLines={1}>
+        {isHero ? 'You' : player.name}
+      </Text>
+      <Text style={seatStyles.stack}>${player.stack.toFixed(0)}</Text>
+      <Text style={[seatStyles.status, isTurn && seatStyles.statusActive]}>{status}</Text>
+    </View>
+  );
+}
 
 export default function TableScreen() {
   const { user, authToken, loading: authLoading } = useAuth();
@@ -55,6 +159,7 @@ export default function TableScreen() {
     ],
     []
   );
+  const { width: windowWidth } = useWindowDimensions();
 
   useEffect(() => {
     if (!user || !authToken) return;
@@ -217,6 +322,14 @@ export default function TableScreen() {
     );
   }
 
+  const tableWidth = Math.min(windowWidth - 32, 520);
+  const tableHeight = Math.round(tableWidth * 0.86);
+  const opponents = (table?.players ?? []).filter((player) => player.id !== user.userId);
+  const seatAssignments = SEAT_SLOTS.slice(0, MAX_SEATS).map((slot, index) => {
+    if (index === 0) return { slot, player: mySeat, isHero: true };
+    return { slot, player: opponents[index - 1] ?? null, isHero: false };
+  });
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.headerRow}>
@@ -234,23 +347,54 @@ export default function TableScreen() {
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
       </View>
 
-      <View style={styles.tableCard}>
-        <Text style={styles.cardTitle}>Table state</Text>
-        <Text style={styles.metric}>Pot: ${table?.pot.toFixed(2) ?? '0.00'}</Text>
-        <Text style={styles.metric}>Community: {communityCards.length > 0 ? communityCards.join('  ') : 'Waiting for board cards'}</Text>
-        <Text style={styles.metric}>Seat stack: {mySeat ? `$${mySeat.stack.toFixed(2)}` : 'Joining table...'}</Text>
-      </View>
+      <View style={styles.feltWrap}>
+        <View
+          style={[
+            feltStyles.felt,
+            { width: tableWidth, height: tableHeight, borderRadius: tableHeight / 2 },
+          ]}
+        >
+          <View style={[feltStyles.feltRim, { borderRadius: tableHeight / 2 }]} />
 
-      <View style={styles.playersCard}>
-        <Text style={styles.cardTitle}>Seats</Text>
-        {(table?.players ?? []).map((seat) => (
-          <View key={seat.id} style={styles.seatRow}>
-            <Text style={styles.seatName}>{seat.name}{seat.isDealer ? ' • D' : ''}</Text>
-            <Text style={styles.seatMeta}>
-              ${seat.stack.toFixed(2)} • {seat.folded ? 'Folded' : seat.allIn ? 'All-in' : table?.currentTurn === seat.id ? 'Thinking' : 'Active'}
-            </Text>
+          <View style={[feltStyles.dealer, { left: tableWidth * 0.5 - 34, top: tableHeight * 0.26 - 26 }]}>
+            <View style={feltStyles.dealerAvatar}>
+              <Text style={feltStyles.dealerEmoji}>{'\uD83C\uDFA9'}</Text>
+            </View>
+            <Text style={feltStyles.dealerLabel}>Dealer</Text>
           </View>
-        ))}
+
+          <View style={[feltStyles.board, { top: tableHeight * 0.44, width: tableWidth }]}>
+            <View style={feltStyles.potPill}>
+              <Text style={feltStyles.potText}>Pot ${table?.pot.toFixed(2) ?? '0.00'}</Text>
+            </View>
+            <View style={feltStyles.boardCards}>
+              {communityCards.length > 0
+                ? communityCards.map((card, index) => <PlayingCard key={`${card}-${index}`} id={card} />)
+                : [0, 1, 2, 3, 4].map((slot) => <PlayingCard key={slot} faceDown />)}
+            </View>
+            <Text style={feltStyles.streetText}>{(table?.currentStreet ?? 'waiting').toUpperCase()}</Text>
+          </View>
+
+          {seatAssignments.map(({ slot, player, isHero }, index) => (
+            <View
+              key={index}
+              style={[
+                feltStyles.seatAnchor,
+                { left: slot.x * tableWidth - 40, top: slot.y * tableHeight - 48 },
+              ]}
+            >
+              <SeatPod
+                player={player}
+                isHero={isHero}
+                isTurn={!!player && table?.currentTurn === player.id}
+              />
+            </View>
+          ))}
+        </View>
+
+        <Text style={feltStyles.tableCaption}>
+          {`6-max \u2022 ${table?.players.length ?? 0}/${MAX_SEATS} seated \u2022 open seats are available to join`}
+        </Text>
       </View>
 
       <View style={styles.audioPanel}>
@@ -417,4 +561,150 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   primaryText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  feltWrap: { alignItems: 'center', gap: 8 },
+});
+
+const feltStyles = StyleSheet.create({
+  felt: {
+    position: 'relative',
+    backgroundColor: '#0C6B3F',
+    borderWidth: 10,
+    borderColor: '#5A3A22',
+    alignSelf: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
+  },
+  feltRim: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    right: 8,
+    bottom: 8,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  dealer: { position: 'absolute', width: 68, alignItems: 'center', gap: 3 },
+  dealerAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: '#12233C',
+    borderWidth: 2,
+    borderColor: '#EBD9B4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dealerEmoji: { fontSize: 22 },
+  dealerLabel: {
+    color: '#F3E7C6',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowRadius: 3,
+  },
+  board: { position: 'absolute', alignItems: 'center', gap: 8 },
+  potPill: {
+    backgroundColor: 'rgba(4,14,10,0.7)',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(240,210,120,0.5)',
+  },
+  potText: { color: '#FBE7A8', fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
+  boardCards: { flexDirection: 'row', gap: 6 },
+  streetText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 2,
+  },
+  seatAnchor: { position: 'absolute', width: 80, alignItems: 'center' },
+  tableCaption: { color: '#8FA6CC', fontSize: 12, textAlign: 'center' },
+});
+
+const cardStyles = StyleSheet.create({
+  card: {
+    width: 34,
+    height: 48,
+    borderRadius: 6,
+    backgroundColor: '#F7FAFF',
+    borderWidth: 1,
+    borderColor: '#C7D2E4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardRank: { fontSize: 15, fontWeight: '800', lineHeight: 17 },
+  cardSuit: { fontSize: 15, lineHeight: 17 },
+  cardBack: { backgroundColor: '#17345B', borderColor: '#4C86D3' },
+  cardBackPattern: {
+    width: 22,
+    height: 34,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(126,211,255,0.55)',
+    backgroundColor: 'rgba(62,143,255,0.25)',
+  },
+});
+
+const seatStyles = StyleSheet.create({
+  pod: {
+    width: 80,
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    borderRadius: 14,
+    backgroundColor: 'rgba(8,16,32,0.82)',
+    borderWidth: 1,
+    borderColor: '#23324E',
+  },
+  heroPod: { borderColor: '#3E8FFF', backgroundColor: 'rgba(20,40,74,0.92)' },
+  turnPod: { borderColor: '#7ED3FF', shadowColor: '#7ED3FF', shadowOpacity: 0.7, shadowRadius: 8 },
+  emptyPod: { borderStyle: 'dashed', borderColor: '#3C4E70', backgroundColor: 'rgba(8,16,32,0.5)' },
+  cardsRow: { flexDirection: 'row', gap: 2, height: 20, marginBottom: 2 },
+  avatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  avatarText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
+  dealerButton: {
+    position: 'absolute',
+    right: -6,
+    bottom: -4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#F5F8FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#0B1220',
+  },
+  dealerButtonText: { color: '#0B1220', fontSize: 10, fontWeight: '900' },
+  name: { color: '#EAF1FF', fontSize: 12, fontWeight: '700', maxWidth: 74 },
+  stack: { color: '#7ED3FF', fontSize: 12, fontWeight: '800' },
+  status: { color: '#8299BE', fontSize: 10, fontWeight: '600' },
+  statusActive: { color: '#7ED3FF' },
+  emptyAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#3C4E70',
+    borderStyle: 'dashed',
+  },
+  emptyPlus: { color: '#5E77A6', fontSize: 20, fontWeight: '700' },
+  emptyLabel: { color: '#6E86AE', fontSize: 10, fontWeight: '600' },
 });

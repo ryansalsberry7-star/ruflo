@@ -281,16 +281,21 @@ function scheduleTurnTimeout(
 
   const timer = setTimeout(() => {
     tableTurnTimers.delete(tableId);
-    const actingPlayer = services.poker.getCurrentTurn(tableId);
-    if (!actingPlayer) return;
+    try {
+      const actingPlayer = services.poker.getCurrentTurn(tableId);
+      if (!actingPlayer) return;
 
-    const table = services.poker.forceFoldForTimeout(tableId, actingPlayer);
-    broadcastTable(clients, tableId, {
-      event: 'turn_action_timed_out',
-      payload: { tableId, userId: actingPlayer },
-    });
-    broadcastTable(clients, tableId, { event: 'table_update', payload: { table } });
-    scheduleTurnTimeout(tableTurnTimers, services, clients, tableId, turnActionMs);
+      const table = services.poker.forceFoldForTimeout(tableId, actingPlayer);
+      broadcastTable(clients, tableId, {
+        event: 'turn_action_timed_out',
+        payload: { tableId, userId: actingPlayer },
+      });
+      broadcastTable(clients, tableId, { event: 'table_update', payload: { table } });
+      scheduleTurnTimeout(tableTurnTimers, services, clients, tableId, turnActionMs);
+    } catch {
+      // A turn timer must never crash the gateway; drop this tick and let the
+      // next player action reschedule the timer.
+    }
   }, turnActionMs);
 
   tableTurnTimers.set(tableId, timer);
