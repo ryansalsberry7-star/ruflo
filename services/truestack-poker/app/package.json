@@ -8,7 +8,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/**/*.test.ts"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.1",
@@ -37,6 +38,7 @@
     "@babel/plugin-transform-class-static-block": "^7.29.7",
     "@types/react": "^18.3.12",
     "@types/three": "^0.185.4",
+    "tsx": "^4.21.0",
     "typescript": "^5.6.3"
   }
 }

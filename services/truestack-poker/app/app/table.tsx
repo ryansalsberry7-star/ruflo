@@ -2,32 +2,16 @@ import { Link } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
+import { ActionBar } from './components/ActionBar';
+import { HoleCards } from './components/HoleCards';
 import { DealerStage } from './components/live-dealer/DealerStage';
 import { useDealerController } from './components/live-dealer/dealerController';
 import { useAuth } from './lib/auth';
 import { getJson, postJson, resolveWebSocketBaseUrl } from './lib/api';
 import { getPlayerCharacter, resolveCharacterId } from './lib/playerIdentity';
 import { useTablePreferences } from './lib/tablePreferences';
-
-interface TablePlayer {
-  id: string;
-  name: string;
-  stack: number;
-  folded: boolean;
-  allIn: boolean;
-  isDealer: boolean;
-  isSmallBlind: boolean;
-  isBigBlind: boolean;
-}
-
-interface TableState {
-  id: string;
-  currentStreet: 'preflop' | 'flop' | 'turn' | 'river' | 'showdown';
-  pot: number;
-  players: TablePlayer[];
-  communityCards: Array<{ id: string }>;
-  currentTurn: string | null;
-}
+import type { DeckColorMode } from './lib/theme';
+import type { ActionKind, TablePlayer, TableState } from './lib/betting';
 
 interface TableEventEnvelope {
   event: string;
@@ -47,6 +31,8 @@ interface PlayerTrustSummary {
 
 const TABLE_ID = 'cash-aurora';
 const MAX_SEATS = 9;
+/** Mirrors the gateway's turnActionMs default; drives the action-bar timer bar. */
+const TURN_ACTION_SECONDS = 20;
 
 // Seat centre positions as fractions of the felt, placed on the oval rim so pods
 // hug the edge. Slot 0 is the hero, bottom-centre; the rest ring clockwise.
@@ -162,9 +148,25 @@ interface SeatPodProps {
   seated: boolean;
   characterId?: string | null;
   verifiedHuman?: boolean;
+  /** The viewer's own hand. Only ever populated for the hero pod. */
+  heroHoleCards: string[];
+  deckMode: DeckColorMode;
+  /** Most recent action this street, e.g. "RAISE $2". */
+  lastAction?: string | null;
 }
 
-function SeatPod({ player, isHero, isTurn, onSit, seated, characterId, verifiedHuman }: SeatPodProps): JSX.Element {
+function SeatPod({
+  player,
+  isHero,
+  isTurn,
+  onSit,
+  seated,
+  characterId,
+  verifiedHuman,
+  heroHoleCards,
+  deckMode,
+  lastAction,
+}: SeatPodProps): JSX.Element {
   if (!player) {
     const label = isHero ? 'Taking seat\u2026' : seated ? 'Open' : 'Sit here';
     return (
@@ -205,12 +207,20 @@ function SeatPod({ player, isHero, isTurn, onSit, seated, characterId, verifiedH
       {isTurn ? <PulseRing /> : null}
       <View style={seatStyles.cardsRow}>
         {!player.folded ? (
-          <>
-            <View style={[seatStyles.holeBack, seatStyles.holeBackTiltLeft]} />
-            <View style={[seatStyles.holeBack, seatStyles.holeBackTiltRight]} />
-          </>
+          // The hero sees their own hand face-up; every other seat stays face-down.
+          <HoleCards
+            cards={isHero ? heroHoleCards : []}
+            deckMode={deckMode}
+            faceDown={!isHero || heroHoleCards.length === 0}
+            size={isHero ? 'md' : 'sm'}
+          />
         ) : null}
       </View>
+      {lastAction ? (
+        <View style={seatStyles.lastActionPill}>
+          <Text style={seatStyles.lastActionText}>{lastAction}</Text>
+        </View>
+      ) : null}
       <View style={[seatStyles.chairBack, isHero && seatStyles.heroChairBack]}>
         <View style={[seatStyles.avatar, { backgroundColor: character.aura, borderColor: character.accent }]}>
           <Text style={seatStyles.avatarEmoji}>{character.emoji}</Text>
@@ -245,11 +255,13 @@ export default function TableScreen() {
   const { user, authToken, loading: authLoading } = useAuth();
   const { preferences, setPreferences } = useTablePreferences();
   const [table, setTable] = useState<TableState | null>(null);
-  const [betValue, setBetValue] = useState(20);
+  const [holeCards, setHoleCards] = useState<string[]>([]);
+  const [deckMode, setDeckMode] = useState<DeckColorMode>('fourColor');
   const [countdown, setCountdown] = useState<number | null>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [heroSlot, setHeroSlot] = useState<number | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [playerProfiles, setPlayerProfiles] = useState<Record<string, PlayerIdentityProfile>>({});
   const [playerTrust, setPlayerTrust] = useState<Record<string, PlayerTrustSummary>>({});
   const reconnectTokenRef = useRef<string | null>(null);
@@ -257,15 +269,6 @@ export default function TableScreen() {
   const manualCloseRef = useRef(false);
 
   const wsUrl = useMemo(() => `${resolveWebSocketBaseUrl()}/ws`, []);
-  const quickBets = useMemo(
-    () => [
-      { label: 'Min', value: 20 },
-      { label: '1/2 Pot', value: 70 },
-      { label: 'Pot', value: 140 },
-      { label: 'Max', value: 320 },
-    ],
-    []
-  );
   const { width: windowWidth } = useWindowDimensions();
 
   useEffect(() => {
@@ -302,6 +305,20 @@ export default function TableScreen() {
 
         if (message.event === 'table_sync' || message.event === 'table_update' || message.event === 'street_update') {
           setTable(message.payload?.table as TableState);
+          return;
+        }
+
+        // Private to this socket: only ever this player's own hand.
+        if (message.event === 'hole_cards') {
+          const cards = message.payload?.holeCards;
+          setHoleCards(Array.isArray(cards) ? (cards as string[]).map((card) => String(card).toUpperCase()) : []);
+          return;
+        }
+
+        if (message.event === 'hand_settled') {
+          // The previous hand's cards are dead the moment it settles; the redeal sends
+          // fresh ones, so clearing here avoids briefly showing a stale hand.
+          setHoleCards([]);
           return;
         }
 
@@ -433,6 +450,21 @@ export default function TableScreen() {
     void triggerFeedback(preferences.hapticFeedbackEnabled, type === 'all-in' ? 'success' : 'selection');
   }
 
+  /**
+   * Label for what a seat has committed this street. Chips in front of a player is the
+   * single most-read piece of information at a live table, and reading it off
+   * streetContribution keeps it true without a separate action feed.
+   */
+  function seatLastAction(player: TablePlayer): string | null {
+    if (player.folded) return 'FOLD';
+    if (player.allIn) return 'ALL-IN';
+    if (!player.streetContribution) return null;
+    const amount = player.streetContribution;
+    const label = Number.isInteger(amount) ? `$${amount}` : `$${amount.toFixed(2)}`;
+    if (table && amount >= table.currentBet && table.currentBet > 0) return `BET ${label}`;
+    return label;
+  }
+
   const mySeat = table?.players.find((player) => player.id === user?.userId) ?? null;
   const communityCards = table?.communityCards.map((card) => card.id.toUpperCase()) ?? [];
   const verifiedSeatCount = Object.values(playerTrust).filter((trust) => trust.verifiedHuman).length;
@@ -455,13 +487,18 @@ export default function TableScreen() {
       return;
     }
     try {
-      const response = await postJson<{ table?: TableState }>(
+      const response = await postJson<{ table?: TableState; holeCards?: string[] }>(
         `/api/tables/${TABLE_ID}/join`,
         { buyIn: 0 },
         { headers: { authorization: `Bearer ${authToken ?? ''}` } }
       );
       setHeroSlot(index);
       if (response?.table) setTable(response.table);
+      // Seats are taken over HTTP, so the hand arrives in this response rather than
+      // over the socket; without it the player sits blind until the next deal.
+      if (Array.isArray(response?.holeCards)) {
+        setHoleCards(response.holeCards.map((card) => String(card).toUpperCase()));
+      }
       setError(null);
       void triggerFeedback(preferences.hapticFeedbackEnabled, 'success');
     } catch (sitError) {
@@ -513,27 +550,16 @@ export default function TableScreen() {
     }));
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <View style={styles.root}>
+      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.headerRow}>
-        <Text style={styles.eyebrow}>PLAY-MONEY BETA • AUTHENTICATED TABLE</Text>
-        <Text style={styles.title}>Aurora Table • $0.05/$0.10</Text>
-        <Text style={styles.subtitle}>A classic terrace-room table with polished rail chrome, personalized seats, and human-verification markers built right into the lineup.</Text>
-      </View>
-
-      <View style={styles.heroBanner}>
-        <View style={[styles.heroBannerAvatar, { backgroundColor: heroCharacter.aura, borderColor: heroCharacter.accent }]}>
-          <Text style={styles.heroBannerEmoji}>{heroCharacter.emoji}</Text>
-          {user.trust.verifiedHuman ? (
-            <View style={styles.heroShield}>
-              <Text style={styles.heroShieldText}>H</Text>
-            </View>
-          ) : null}
+        <View style={styles.headerMain}>
+          <Text style={styles.title}>Aurora Table</Text>
+          <Text style={styles.headerStakes}>$0.05/$0.10 • Play-money beta</Text>
         </View>
-        <View style={styles.heroBannerCopy}>
-          <Text style={styles.heroBannerTitle}>{heroCharacter.name}</Text>
-          <Text style={styles.heroBannerMeta}>{heroCharacter.title}</Text>
-          <Text style={styles.heroBannerNote}>{user.trust.verifiedHuman ? 'Verified human shield is visible on your seat.' : 'Verification shield appears after human checks complete.'}</Text>
-        </View>
+        <Pressable style={styles.gearButton} onPress={() => setSettingsOpen((open) => !open)}>
+          <Text style={styles.gearText}>⚙</Text>
+        </Pressable>
       </View>
 
       <View style={styles.tableStrip}>
@@ -647,6 +673,9 @@ export default function TableScreen() {
                   seated={seated}
                   characterId={player ? playerProfiles[player.id]?.customization.playerCharacter : null}
                   verifiedHuman={player ? playerTrust[player.id]?.verifiedHuman : false}
+                  heroHoleCards={isHero ? holeCards : []}
+                  deckMode={deckMode}
+                  lastAction={player ? seatLastAction(player) : null}
                   onSit={!player ? () => void handleSit(index) : undefined}
                 />
               </View>
@@ -655,65 +684,37 @@ export default function TableScreen() {
         </View>
       </View>
 
-      <View style={styles.consoleShelf}>
-        <View style={styles.consoleBezel}>
-          <Text style={styles.consoleBezelText}>TABLE CONSOLE</Text>
-          <Text style={styles.consoleBezelMeta}>Terrace Room Panel</Text>
-        </View>
-
-        <View style={styles.audioPanel}>
-          <Text style={styles.consoleTitle}>Sound & Atmosphere</Text>
-          <View style={styles.audioRow}>
-            <Text style={styles.audioLabel}>3D dealer</Text>
-            <Switch value={preferences.liveDealerEnabled} onValueChange={(value) => setPreferences({ liveDealerEnabled: value })} trackColor={{ false: '#7B746A', true: '#E1B847' }} />
-          </View>
-          <View style={styles.audioRow}>
-            <Text style={styles.audioLabel}>Dealer & table sounds</Text>
-            <Switch value={preferences.soundEffectsEnabled} onValueChange={(value) => setPreferences({ soundEffectsEnabled: value })} trackColor={{ false: '#7B746A', true: '#E1B847' }} />
-          </View>
-          <View style={styles.audioRow}>
-            <Text style={styles.audioLabel}>Ambient effects</Text>
-            <Switch value={preferences.ambientEffectsEnabled} onValueChange={(value) => setPreferences({ ambientEffectsEnabled: value })} trackColor={{ false: '#7B746A', true: '#E1B847' }} />
-          </View>
-          <View style={styles.audioRow}>
-            <Text style={styles.audioLabel}>Haptic feedback</Text>
-            <Switch value={preferences.hapticFeedbackEnabled} onValueChange={(value) => setPreferences({ hapticFeedbackEnabled: value })} trackColor={{ false: '#7B746A', true: '#E1B847' }} />
-          </View>
-        </View>
-
-        <View style={styles.controlsPanel}>
-          <Text style={styles.consoleTitle}>Action Deck</Text>
-          {seated ? (
-            <Text style={styles.raiseLabel}>Selected bet ${betValue.toFixed(2)}</Text>
-          ) : (
-            <Text style={styles.sitHint}>Tap an open seat to join the table</Text>
-          )}
-          <View style={styles.quickRow}>
-            {quickBets.map((quick) => (
-              <Pressable key={quick.label} disabled={!seated} style={[styles.quickButton, !seated && styles.disabledButton]} onPress={() => setBetValue(quick.value)}>
-                <Text style={styles.quickText}>{quick.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <View style={styles.actionsGrid}>
-            <Pressable disabled={!seated} style={[styles.actionButton, styles.foldButton, !seated && styles.disabledButton]} onPress={() => sendAction('fold')}>
-              <Text style={styles.actionButtonText}>Fold</Text>
-            </Pressable>
-            <Pressable disabled={!seated} style={[styles.actionButton, !seated && styles.disabledButton]} onPress={() => sendAction('check')}>
-              <Text style={styles.actionButtonText}>Check</Text>
-            </Pressable>
-            <Pressable disabled={!seated} style={[styles.actionButton, !seated && styles.disabledButton]} onPress={() => sendAction('call', betValue)}>
-              <Text style={styles.actionButtonText}>Call</Text>
-            </Pressable>
-            <Pressable disabled={!seated} style={[styles.actionButton, styles.raiseButton, !seated && styles.disabledButton]} onPress={() => sendAction('raise', betValue)}>
-              <Text style={styles.actionButtonText}>Raise</Text>
-            </Pressable>
-            <Pressable disabled={!seated} style={[styles.actionButton, !seated && styles.disabledButton]} onPress={() => sendAction('all-in', mySeat?.stack ?? betValue)}>
-              <Text style={styles.actionButtonText}>All-in</Text>
-            </Pressable>
+      {settingsOpen ? (
+        <View style={styles.consoleShelf}>
+          <View style={styles.audioPanel}>
+            <Text style={styles.consoleTitle}>Sound & Atmosphere</Text>
+            <View style={styles.audioRow}>
+              <Text style={styles.audioLabel}>3D dealer</Text>
+              <Switch value={preferences.liveDealerEnabled} onValueChange={(value) => setPreferences({ liveDealerEnabled: value })} trackColor={{ false: '#7B746A', true: '#E1B847' }} />
+            </View>
+            <View style={styles.audioRow}>
+              <Text style={styles.audioLabel}>Dealer & table sounds</Text>
+              <Switch value={preferences.soundEffectsEnabled} onValueChange={(value) => setPreferences({ soundEffectsEnabled: value })} trackColor={{ false: '#7B746A', true: '#E1B847' }} />
+            </View>
+            <View style={styles.audioRow}>
+              <Text style={styles.audioLabel}>Ambient effects</Text>
+              <Switch value={preferences.ambientEffectsEnabled} onValueChange={(value) => setPreferences({ ambientEffectsEnabled: value })} trackColor={{ false: '#7B746A', true: '#E1B847' }} />
+            </View>
+            <View style={styles.audioRow}>
+              <Text style={styles.audioLabel}>Haptic feedback</Text>
+              <Switch value={preferences.hapticFeedbackEnabled} onValueChange={(value) => setPreferences({ hapticFeedbackEnabled: value })} trackColor={{ false: '#7B746A', true: '#E1B847' }} />
+            </View>
+            <View style={styles.audioRow}>
+              <Text style={styles.audioLabel}>Four-colour deck</Text>
+              <Switch
+                value={deckMode === 'fourColor'}
+                onValueChange={(value) => setDeckMode(value ? 'fourColor' : 'twoColor')}
+                trackColor={{ false: '#7B746A', true: '#E1B847' }}
+              />
+            </View>
           </View>
         </View>
-      </View>
+      ) : null}
 
       <View style={styles.railConsole}>
         <View style={styles.railTabs}>
@@ -759,16 +760,41 @@ export default function TableScreen() {
           </Pressable>
         </Link>
       </View>
-    </ScrollView>
+      </ScrollView>
+
+      {/* Pinned outside the ScrollView: a 20s turn timer leaves no room to scroll for Fold. */}
+      <ActionBar
+        table={table}
+        playerId={user.userId}
+        seated={seated}
+        countdown={countdown}
+        turnActionSeconds={TURN_ACTION_SECONDS}
+        onAction={sendAction}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#17090D' },
   centered: { flex: 1, backgroundColor: '#17090D', justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
   message: { color: '#F3DCD2', fontSize: 15, textAlign: 'center', lineHeight: 22 },
   screen: { flex: 1, backgroundColor: '#17090D' },
   content: { paddingHorizontal: 10, paddingTop: 32, paddingBottom: 16, gap: 14 },
-  headerRow: { gap: 4, paddingHorizontal: 8 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 8 },
+  headerMain: { flex: 1, gap: 2 },
+  headerStakes: { color: '#B99D93', fontSize: 12, fontWeight: '600' },
+  gearButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1,
+    borderColor: '#4B2630',
+    backgroundColor: '#221017',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gearText: { color: '#F1C46E', fontSize: 17 },
   eyebrow: { color: '#F1C46E', fontSize: 11, fontWeight: '800', letterSpacing: 1.6 },
   title: { color: '#FFF4E7', fontSize: 24, fontWeight: '900' },
   subtitle: { color: '#D2BCB4', fontSize: 13, lineHeight: 19 },
@@ -1212,6 +1238,16 @@ const cardStyles = StyleSheet.create({
 });
 
 const seatStyles = StyleSheet.create({
+  lastActionPill: {
+    backgroundColor: '#3A1E22',
+    borderColor: '#8A6A45',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    marginTop: 1,
+  },
+  lastActionText: { color: '#F1C46E', fontSize: 9, fontWeight: '800', letterSpacing: 0.4 },
   pod: {
     width: 80,
     alignItems: 'center',

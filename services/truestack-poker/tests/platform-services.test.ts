@@ -31,6 +31,27 @@ test('settles hands with zero rake and full player-to-player pot distribution', 
   assert.equal(Number(payoutTotal.toFixed(2)), Number(settled.totalPot.toFixed(2)));
 });
 
+test('hole cards are returned only to the seated player who owns them', () => {
+  const poker = new PokerService();
+  poker.createCashTable('table-hole', 'micro-1', [
+    { id: 'p1', name: 'Ada', stack: 100 },
+    { id: 'p2', name: 'Linus', stack: 100 },
+  ]);
+
+  const ada = poker.getHoleCardsFor('table-hole', 'p1');
+  const linus = poker.getHoleCardsFor('table-hole', 'p2');
+
+  assert.equal(ada.length, 2);
+  assert.equal(linus.length, 2);
+  // Two players must never be dealt the same physical card.
+  const overlap = ada.filter((card) => linus.some((other) => other.id === card.id));
+  assert.deepEqual(overlap, []);
+
+  // Anyone not seated at the table gets nothing back, so a spectator socket cannot
+  // fish for another player's hand by asking for it.
+  assert.deepEqual(poker.getHoleCardsFor('table-hole', 'spectator'), []);
+});
+
 test('settled pots are paid into the winner stacks, not cashed out to wallets', () => {
   const wallet = new WalletService();
   const poker = new PokerService(undefined, wallet);

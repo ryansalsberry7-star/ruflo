@@ -68,6 +68,8 @@ export function attachRealtimeGateway(options: GatewayOptions) {
   const onHandSettled = (settled: SettledHand) => {
     broadcastTable(clients, settled.tableId, { event: 'hand_settled', payload: { settled } });
     broadcastTable(clients, settled.tableId, { event: 'table_update', payload: { table: services.poker.getTable(settled.tableId) } });
+    // The dealer brain has already redealt, so every seat has a fresh hand to deliver.
+    sendPrivateHoleCards(clients, services, settled.tableId);
     scheduleTurnTimeout(tableTurnTimers, services, clients, settled.tableId, turnActionMs);
   };
   services.poker.on('hand-settled', onHandSettled);
@@ -150,6 +152,16 @@ export function attachRealtimeGateway(options: GatewayOptions) {
           clients.set(socket, { ...session, tableId });
           scheduleTurnTimeout(tableTurnTimers, services, clients, tableId, turnActionMs);
           socket.send(JSON.stringify({ event: 'table_sync', payload: { table } }));
+          // Deliver this socket's own hand so a rejoining player can see what they hold.
+          const holeCards = services.poker.getHoleCardsFor(tableId, session.userId);
+          if (holeCards.length > 0) {
+            socket.send(
+              JSON.stringify({
+                event: 'hole_cards',
+                payload: { tableId, holeCards: holeCards.map((card) => card.id) },
+              })
+            );
+          }
           return;
         }
 
@@ -328,5 +340,35 @@ function broadcastTable(
     if (session.tableId !== tableId) continue;
     if (session.socket.readyState !== session.socket.OPEN) continue;
     session.socket.send(JSON.stringify(message));
+  }
+}
+
+/**
+ * Sends each seated player their OWN hole cards, one socket at a time.
+ *
+ * Hole cards are the one piece of table state that must never be broadcast: a single
+ * shared payload containing every hand would hand the whole table to anyone reading
+ * the socket. Each message is built per recipient from their authenticated userId, and
+ * spectators (no seat) simply receive an empty hand.
+ */
+function sendPrivateHoleCards(
+  clients: Map<WebSocket, ClientSession>,
+  services: GatewayServices,
+  tableId: string
+): void {
+  for (const session of clients.values()) {
+    if (session.tableId !== tableId) continue;
+    if (session.socket.readyState !== session.socket.OPEN) continue;
+    if (session.userId === 'guest') continue;
+
+    const holeCards = services.poker.getHoleCardsFor(tableId, session.userId);
+    if (holeCards.length === 0) continue;
+
+    session.socket.send(
+      JSON.stringify({
+        event: 'hole_cards',
+        payload: { tableId, holeCards: holeCards.map((card) => card.id) },
+      })
+    );
   }
 }

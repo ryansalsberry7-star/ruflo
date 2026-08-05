@@ -266,6 +266,21 @@ export class PokerService extends EventEmitter implements GameHostProvider {
     return this.activeDealerHands.get(tableId)?.handId ?? null;
   }
 
+  /**
+   * The requesting player's own hole cards for the live hand.
+   *
+   * Deliberately scoped to a single player: there is no method that returns the whole
+   * table's hole cards, so a caller cannot accidentally broadcast them. Callers must
+   * send the result only to the socket authenticated as `playerId`.
+   */
+  getHoleCardsFor(tableId: string, playerId: string): Card[] {
+    const hand = this.activeDealerHands.get(tableId);
+    if (!hand) return [];
+    const seated = this.tables.get(tableId)?.players.some((entry) => entry.id === playerId);
+    if (!seated) return [];
+    return [...(hand.holeCardsByPlayer[playerId] ?? [])];
+  }
+
   advanceStreet(tableId: string): TableState {
     const current = this.getTable(tableId);
     let next: TableState = current;

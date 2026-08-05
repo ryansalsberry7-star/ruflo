@@ -928,6 +928,9 @@ async function routeRequest(
 
     sendJson(res, 200, {
       table,
+      // The seat is taken over HTTP, so the socket never re-subscribes -- return this
+      // player's own hand here or they would sit blind until the next deal.
+      holeCards: services.poker.getHoleCardsFor(tableId, userId).map((card) => card.id),
       reconnectToken: reconnect.token,
       reconnectTokenExpiresAt: reconnect.expiresAt,
     });

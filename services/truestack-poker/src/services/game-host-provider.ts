@@ -1,4 +1,4 @@
-import type { ActionType, TableState } from '../poker-engine.js';
+import type { ActionType, Card, TableState } from '../poker-engine.js';
 import type { StakeLevel, TournamentListing, ZeroRakePolicy } from '../contracts.js';
 import type { HandVerificationRecord } from './dealer-service.js';
 import type { FeaturedTable, SettledHand, TableListing, TournamentRegistration } from './poker-service.js';
@@ -37,6 +37,8 @@ export interface GameHostProvider {
   forceFoldForTimeout(tableId: string, playerId: string): TableState;
   getCurrentTurn(tableId: string): string | null;
   getActiveHandId(tableId: string): string | null;
+  /** One player's own hole cards. Send only to the socket authenticated as that player. */
+  getHoleCardsFor(tableId: string, playerId: string): Card[];
 
   getHandHistory(tableId: string): SettledHand[];
   getHandVerification(handId: string): HandVerificationRecord;
