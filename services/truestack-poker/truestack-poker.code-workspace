@@ -1,0 +1,47 @@
+{
+  "folders": [
+    { "name": "Backend", "path": "." },
+    { "name": "Mobile App", "path": "app" }
+  ],
+  "settings": {
+    "typescript.tsdk": "node_modules/typescript/lib"
+  },
+  "extensions": {
+    "recommendations": ["msjsdiag.vscode-react-native", "expo.vscode-expo-tools"]
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Backend: dev server (tsx watch)",
+        "runtimeExecutable": "${workspaceFolder:Backend}/node_modules/.bin/tsx",
+        "runtimeArgs": ["watch", "src/server.ts"],
+        "cwd": "${workspaceFolder:Backend}",
+        "console": "integratedTerminal",
+        "internalConsoleOptions": "neverOpen",
+        "skipFiles": ["<node_internals>/**"]
+      },
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Backend: run tests",
+        "runtimeExecutable": "${workspaceFolder:Backend}/node_modules/.bin/tsx",
+        "runtimeArgs": ["--test", "tests/**/*.test.ts"],
+        "cwd": "${workspaceFolder:Backend}",
+        "console": "integratedTerminal",
+        "internalConsoleOptions": "neverOpen",
+        "skipFiles": ["<node_internals>/**"]
+      },
+      {
+        "type": "reactnative",
+        "request": "launch",
+        "name": "Mobile App: debug iOS (Expo)",
+        "platform": "ios",
+        "target": "simulator",
+        "cwd": "${workspaceFolder:Mobile App}"
+      }
+    ]
+  }
+}
