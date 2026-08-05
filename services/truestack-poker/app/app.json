@@ -4,7 +4,11 @@
     "slug": "truestack-poker",
     "version": "1.0.0",
     "scheme": "truestack",
-    "platforms": ["ios", "android", "web"],
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "runtimeVersion": {
@@ -30,6 +34,10 @@
     },
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "plugins": [
+      "expo-asset",
+      "expo-font"
+    ]
   }
 }

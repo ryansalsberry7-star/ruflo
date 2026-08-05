@@ -165,6 +165,13 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
   const requestUrl = new URL(req.url ?? '/', 'http://localhost');
   const pathname = requestUrl.pathname;
 
+  applyCorsHeaders(req, res);
+  if (method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   if (method === 'GET' && pathname === '/api/health') {
     sendJson(res, 200, {
       status: 'ok',
@@ -918,6 +925,15 @@ async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknow
   const raw = Buffer.concat(chunks).toString('utf8').trim();
   if (raw.length === 0) return {};
   return JSON.parse(raw) as Record<string, unknown>;
+}
+
+function applyCorsHeaders(req: IncomingMessage, res: ServerResponse): void {
+  const origin = req.headers.origin;
+  res.setHeader('access-control-allow-origin', typeof origin === 'string' ? origin : '*');
+  res.setHeader('vary', 'Origin');
+  res.setHeader('access-control-allow-methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader('access-control-allow-headers', 'Content-Type, Authorization, X-Admin-Key');
+  res.setHeader('access-control-max-age', '600');
 }
 
 function sendJson(res: ServerResponse, status: number, payload: unknown): void {
