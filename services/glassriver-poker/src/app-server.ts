@@ -3,10 +3,13 @@ import { URL } from 'node:url';
 import { actionEnvelopeSchema } from './contracts.js';
 import { attachRealtimeGateway } from './realtime/ws-gateway.js';
 import { AnalyticsService } from './services/analytics-service.js';
+import { CoachService } from './services/coach-service.js';
 import { ComplianceService } from './services/compliance-service.js';
+import { CommunityService } from './services/community-service.js';
 import { PaymentService } from './services/payment-service.js';
 import { PokerService } from './services/poker-service.js';
 import { SessionService } from './services/session-service.js';
+import { TrustService } from './services/trust-service.js';
 import { UserService } from './services/user-service.js';
 import { WalletService } from './services/wallet-service.js';
 
@@ -18,6 +21,9 @@ export interface PlatformServices {
   users: UserService;
   analytics: AnalyticsService;
   sessions: SessionService;
+  trust: TrustService;
+  community: CommunityService;
+  coach: CoachService;
 }
 
 export interface PlatformServerOptions {
@@ -36,6 +42,9 @@ export function buildDefaultServices(): PlatformServices {
   const users = new UserService();
   const analytics = new AnalyticsService();
   const sessions = new SessionService();
+  const trust = new TrustService();
+  const community = new CommunityService();
+  const coach = new CoachService();
 
   const initialUsers = [
     users.createUser('p1', 'Ada'),
@@ -45,7 +54,18 @@ export function buildDefaultServices(): PlatformServices {
 
   for (const user of initialUsers) {
     wallet.ensureWallet(user.id);
+    trust.markVerifiedHuman(user.id);
+    trust.setSecurityVerificationStatus(user.id, 'id-verified');
+    community.ensureProfile(user.id, user.username);
+    community.setOnlineStatus(user.id, true);
   }
+
+  community.createClub({
+    ownerId: 'p1',
+    name: 'GlassRiver Founders Club',
+    description: 'Invite-only home game community focused on fair-play and study.',
+    isPrivate: true,
+  });
 
   poker.createCashTable(
     'cash-aurora',
@@ -53,7 +73,7 @@ export function buildDefaultServices(): PlatformServices {
     initialUsers.map((entry) => ({ id: entry.id, name: entry.username, stack: 1000 }))
   );
 
-  return { poker, wallet, payment, compliance, users, analytics, sessions };
+  return { poker, wallet, payment, compliance, users, analytics, sessions, trust, community, coach };
 }
 
 export function createPlatformServer(services: PlatformServices, options: PlatformServerOptions = {}) {
@@ -72,6 +92,9 @@ export function createPlatformServer(services: PlatformServices, options: Platfo
       wallet: services.wallet,
       analytics: services.analytics,
       sessions: services.sessions,
+      trust: services.trust,
+      community: services.community,
+      coach: services.coach,
     },
     path: options.gateway?.path,
     disconnectGraceMs: options.gateway?.disconnectGraceMs,
@@ -152,6 +175,18 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
     return;
   }
 
+  if (method === 'GET' && pathname === '/api/transparency/trust-center') {
+    sendJson(res, 200, {
+      trustCenter: services.trust.getTrustCenterOverview(),
+      fairPlay: {
+        handVerification: 'enabled',
+        antiCheat: ['bot-detection', 'multi-account-monitoring', 'collusion-monitoring', 'suspicious-gameplay-monitoring'],
+        noHousePlayers: true,
+      },
+    });
+    return;
+  }
+
   if (method === 'GET' && pathname === '/api/spectator/featured-tables') {
     sendJson(res, 200, {
       featuredTables: services.poker.listFeaturedTables(),
@@ -194,6 +229,211 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
     return;
   }
 
+  if (method === 'GET' && pathname.startsWith('/api/trust/') && pathname.split('/').length === 4) {
+    const userId = pathname.split('/')[3] ?? '';
+    const trust = services.trust.getPlayerTrust(userId);
+    sendJson(res, 200, { trust });
+    return;
+  }
+
+  if (method === 'POST' && pathname.startsWith('/api/trust/') && pathname.endsWith('/verify-human')) {
+    const userId = pathname.split('/')[3] ?? '';
+    const trust = services.trust.markVerifiedHuman(userId);
+    sendJson(res, 200, { trust });
+    return;
+  }
+
+  if (method === 'POST' && pathname.startsWith('/api/trust/') && pathname.endsWith('/security-status')) {
+    const userId = pathname.split('/')[3] ?? '';
+    const body = await readJsonBody(req);
+    const status = String(body.status ?? 'unverified') as 'unverified' | 'email-verified' | 'id-verified' | 'enhanced';
+    const trust = services.trust.setSecurityVerificationStatus(userId, status);
+    sendJson(res, 200, { trust });
+    return;
+  }
+
+  if (method === 'POST' && pathname.startsWith('/api/trust/') && pathname.endsWith('/anti-cheat-signal')) {
+    const userId = pathname.split('/')[3] ?? '';
+    const body = await readJsonBody(req);
+    const category = String(body.category ?? 'suspicious-timing') as
+      | 'bot-pattern'
+      | 'multi-account'
+      | 'collusion'
+      | 'suspicious-timing'
+      | 'chip-dumping';
+    const severity = String(body.severity ?? 'medium') as 'low' | 'medium' | 'high';
+    const detail = String(body.detail ?? 'Flagged by trust monitor.');
+    const trust = services.trust.recordAntiCheatSignal({ userId, category, severity, detail });
+    sendJson(res, 200, { trust });
+    return;
+  }
+
+  if (method === 'GET' && pathname === '/api/trust/flagged') {
+    const minSignals = Number(requestUrl.searchParams.get('minSignals') ?? '2');
+    sendJson(res, 200, { flagged: services.trust.listFlaggedPlayers(Number.isFinite(minSignals) ? minSignals : 2) });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/api/trust/collusion-assessment') {
+    const body = await readJsonBody(req);
+    const assessment = services.trust.assessCollusion({
+      userA: String(body.userA ?? ''),
+      userB: String(body.userB ?? ''),
+      sharedTables: Number(body.sharedTables ?? 0),
+      mirroredDecisionRate: Number(body.mirroredDecisionRate ?? 0),
+      chipTransferBias: Number(body.chipTransferBias ?? 0),
+    });
+    sendJson(res, 200, { assessment });
+    return;
+  }
+
+  if (method === 'POST' && pathname.startsWith('/api/profiles/') && pathname.endsWith('/follow')) {
+    const userId = pathname.split('/')[3] ?? '';
+    const body = await readJsonBody(req);
+    const targetUserId = String(body.targetUserId ?? '');
+    const profile = services.community.followPlayer(userId, targetUserId);
+    sendJson(res, 200, { profile });
+    return;
+  }
+
+  if (method === 'POST' && pathname.startsWith('/api/profiles/') && pathname.endsWith('/customization')) {
+    const userId = pathname.split('/')[3] ?? '';
+    const body = await readJsonBody(req);
+    const customizationUpdate: Partial<ReturnType<typeof services.community.getProfile>['customization']> = {};
+    if (typeof body.cardBack === 'string') customizationUpdate.cardBack = body.cardBack;
+    if (typeof body.tableTheme === 'string') customizationUpdate.tableTheme = body.tableTheme;
+    if (typeof body.dealerAvatar === 'string') customizationUpdate.dealerAvatar = body.dealerAvatar;
+    if (typeof body.profileFrame === 'string') customizationUpdate.profileFrame = body.profileFrame;
+    if (typeof body.chipDesign === 'string') customizationUpdate.chipDesign = body.chipDesign;
+
+    const profile = services.community.setCustomization(userId, customizationUpdate);
+    sendJson(res, 200, { profile });
+    return;
+  }
+
+  if (method === 'GET' && pathname.startsWith('/api/profiles/') && pathname.endsWith('/achievements')) {
+    const userId = pathname.split('/')[3] ?? '';
+    sendJson(res, 200, { achievements: services.community.listAchievements(userId) });
+    return;
+  }
+
+  if (method === 'GET' && pathname.startsWith('/api/profiles/') && pathname.split('/').length === 4) {
+    const userId = pathname.split('/')[3] ?? '';
+    sendJson(res, 200, { profile: services.community.getProfile(userId) });
+    return;
+  }
+
+  if (method === 'GET' && pathname === '/api/social/clubs') {
+    sendJson(res, 200, { clubs: services.community.listClubs() });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/api/social/clubs') {
+    const body = await readJsonBody(req);
+    const club = services.community.createClub({
+      ownerId: String(body.ownerId ?? ''),
+      name: String(body.name ?? 'Untitled Club'),
+      description: String(body.description ?? ''),
+      isPrivate: Boolean(body.isPrivate ?? false),
+    });
+    sendJson(res, 200, { club });
+    return;
+  }
+
+  if (method === 'POST' && pathname.startsWith('/api/social/clubs/') && pathname.endsWith('/join')) {
+    const clubId = pathname.split('/')[4] ?? '';
+    const body = await readJsonBody(req);
+    const userId = String(body.userId ?? '');
+    const club = services.community.joinClub(clubId, userId);
+    sendJson(res, 200, { club });
+    return;
+  }
+
+  if (method === 'GET' && pathname.startsWith('/api/session-tracker/')) {
+    const userId = pathname.split('/')[3] ?? '';
+    sendJson(res, 200, { tracker: services.community.getSessionTracker(userId) });
+    return;
+  }
+
+  if (method === 'GET' && pathname.startsWith('/api/coach/') && pathname.endsWith('/session-review')) {
+    const userId = pathname.split('/')[3] ?? '';
+    sendJson(res, 200, { review: services.coach.generateSessionReview(userId) });
+    return;
+  }
+
+  if (method === 'GET' && pathname.startsWith('/api/coach/hands/') && pathname.endsWith('/analyze')) {
+    const handId = pathname.split('/')[4] ?? '';
+    const userId = String(requestUrl.searchParams.get('userId') ?? '');
+    const tableId = String(requestUrl.searchParams.get('tableId') ?? '');
+    if (!userId || !tableId) {
+      sendJson(res, 400, { error: 'userId and tableId are required query params' });
+      return;
+    }
+
+    const replay = services.poker.getHandReplay(tableId, handId);
+    const verification = services.poker.getHandVerification(replay.handId);
+    const analysis = services.coach.analyzeHandForPlayer(userId, verification);
+    sendJson(res, 200, { analysis });
+    return;
+  }
+
+  if (method === 'GET' && pathname === '/api/poker-academy/modules') {
+    sendJson(res, 200, { modules: services.community.getAcademyModules() });
+    return;
+  }
+
+  if (method === 'GET' && pathname === '/api/cosmetics/catalog') {
+    sendJson(res, 200, { catalog: services.community.getCosmeticCatalog() });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/api/lobby/find-my-game') {
+    const body = await readJsonBody(req);
+    const userId = String(body.userId ?? '');
+    const stakePreference = String(body.stakes ?? 'all');
+    const speedPreference = String(body.speed ?? 'all');
+    const tableSizePreference = Number(body.tableSize ?? 6);
+    const skillLevel = String(body.skillLevel ?? 'intermediate');
+
+    const profile = services.community.getProfile(userId);
+    const listings = services.poker.listCashGames();
+    const recommendations = listings
+      .filter((listing) => !listing.isPrivate)
+      .map((listing) => {
+        let fit = 50;
+        if (speedPreference !== 'all' && listing.speed === speedPreference) fit += 15;
+        if (stakePreference === 'micro' && listing.stake.bigBlind <= 0.1) fit += 20;
+        if (stakePreference === 'low' && listing.stake.bigBlind > 0.1 && listing.stake.bigBlind <= 2) fit += 20;
+        if (stakePreference === 'mid' && listing.stake.bigBlind > 2 && listing.stake.bigBlind <= 10) fit += 20;
+        if (stakePreference === 'high' && listing.stake.bigBlind > 10) fit += 20;
+        fit += Math.max(0, 10 - Math.abs(tableSizePreference - listing.playersSeated));
+        if (skillLevel === 'beginner' && listing.stake.bigBlind <= 2) fit += 10;
+        if (skillLevel === 'pro' && listing.stake.bigBlind >= 5) fit += 10;
+        if (profile.level <= 3 && listing.stake.bigBlind <= 2) fit += 8;
+
+        return {
+          tableId: listing.id,
+          stake: `$${listing.stake.smallBlind}/$${listing.stake.bigBlind}`,
+          speed: listing.speed,
+          playersSeated: listing.playersSeated,
+          fitScore: Math.min(99, fit),
+          reason:
+            listing.stake.bigBlind <= 2
+              ? 'Good for volume and fundamentals.'
+              : 'Higher-skill table with stronger decision depth.',
+        };
+      })
+      .sort((a, b) => b.fitScore - a.fitScore)
+      .slice(0, 3);
+
+    sendJson(res, 200, {
+      userId,
+      recommendations,
+      note: 'Find My Game suggests tables by stakes, speed, skill fit, and active seats.',
+    });
+    return;
+  }
+
   if (method === 'POST' && pathname.startsWith('/api/tables/') && pathname.endsWith('/join')) {
     const tableId = pathname.split('/')[3] ?? '';
     const body = await readJsonBody(req);
@@ -202,6 +442,8 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
     const buyIn = Number(body.buyIn ?? 0);
 
     services.users.createUser(userId, username);
+    services.trust.ensurePlayer(userId);
+    services.community.ensureProfile(userId, username);
     if (buyIn > 0) {
       services.wallet.transferForBuyIn(userId, buyIn, tableId);
     } else {
@@ -225,6 +467,12 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
     const userId = String(body.userId ?? 'guest');
     const action = actionEnvelopeSchema.parse(body.action);
     const table = services.poker.applyPlayerAction(tableId, userId, action.type, action.amount ?? 0);
+    services.coach.recordAction({
+      userId,
+      type: action.type,
+      street: table.currentStreet,
+      handId: services.poker.getActiveHandId(tableId) ?? undefined,
+    });
     sendJson(res, 200, { table });
     return;
   }

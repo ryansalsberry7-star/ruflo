@@ -146,3 +146,70 @@ test('serves fair-play verification and replay payloads for completed hands', as
     await app.stop();
   }
 });
+
+test('exposes trust center and verified human profile endpoints', async () => {
+  const services = buildDefaultServices();
+  const app = createPlatformServer(services);
+  const port = await app.start(0);
+
+  try {
+    const centerRes = await fetch(`http://127.0.0.1:${port}/api/transparency/trust-center`);
+    const center = await centerRes.json();
+    assert.equal(centerRes.status, 200);
+    assert.equal(center.trustCenter.noUndisclosedAiPlayers, true);
+
+    const verifyRes = await fetch(`http://127.0.0.1:${port}/api/trust/p9/verify-human`, {
+      method: 'POST',
+    });
+    const verify = await verifyRes.json();
+    assert.equal(verifyRes.status, 200);
+    assert.equal(verify.trust.verifiedHuman, true);
+
+    const profileRes = await fetch(`http://127.0.0.1:${port}/api/trust/p9`);
+    const profile = await profileRes.json();
+    assert.equal(profileRes.status, 200);
+    assert.equal(profile.trust.verifiedHumanBadge, 'verified-human');
+  } finally {
+    await app.stop();
+  }
+});
+
+test('supports social clubs, ai hand analysis, and find-my-game matchmaking', async () => {
+  const services = buildDefaultServices();
+  const app = createPlatformServer(services);
+  const port = await app.start(0);
+
+  try {
+    services.poker.applyPlayerAction('cash-aurora', 'p1', 'bet', 15);
+    services.poker.applyPlayerAction('cash-aurora', 'p2', 'call', 15);
+    const settled = services.poker.settleHand('cash-aurora');
+
+    const clubRes = await fetch(`http://127.0.0.1:${port}/api/social/clubs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ownerId: 'p1', name: 'Night Owls', description: 'Home game regulars' }),
+    });
+    const clubPayload = await clubRes.json();
+    assert.equal(clubRes.status, 200);
+    assert.ok(clubPayload.club.id.length > 0);
+
+    const coachRes = await fetch(
+      `http://127.0.0.1:${port}/api/coach/hands/${settled.handId}/analyze?userId=p1&tableId=cash-aurora`
+    );
+    const coachPayload = await coachRes.json();
+    assert.equal(coachRes.status, 200);
+    assert.equal(coachPayload.analysis.handId, settled.handId);
+    assert.ok(Array.isArray(coachPayload.analysis.betterPlays));
+
+    const matchRes = await fetch(`http://127.0.0.1:${port}/api/lobby/find-my-game`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userId: 'p1', stakes: 'micro', speed: 'standard', tableSize: 6, skillLevel: 'beginner' }),
+    });
+    const matchPayload = await matchRes.json();
+    assert.equal(matchRes.status, 200);
+    assert.ok(Array.isArray(matchPayload.recommendations));
+  } finally {
+    await app.stop();
+  }
+});

@@ -5,7 +5,10 @@ import { actionEnvelopeSchema } from '../contracts.js';
 import { PokerService } from '../services/poker-service.js';
 import { WalletService } from '../services/wallet-service.js';
 import { AnalyticsService } from '../services/analytics-service.js';
+import { CoachService } from '../services/coach-service.js';
+import { CommunityService } from '../services/community-service.js';
 import { SessionService } from '../services/session-service.js';
+import { TrustService } from '../services/trust-service.js';
 
 interface ClientSession {
   socket: WebSocket;
@@ -25,6 +28,9 @@ interface GatewayServices {
   wallet: WalletService;
   analytics: AnalyticsService;
   sessions: SessionService;
+  trust: TrustService;
+  community: CommunityService;
+  coach: CoachService;
 }
 
 interface GatewayOptions {
@@ -101,6 +107,9 @@ export function attachRealtimeGateway(options: GatewayOptions) {
 
           clients.set(socket, { ...session, userId, tableId });
           services.wallet.ensureWallet(userId);
+          services.trust.ensurePlayer(userId);
+          services.community.ensureProfile(userId, userId);
+          services.community.setOnlineStatus(userId, true);
           const reconnect = tableId
             ? services.sessions.issueReconnectToken(userId, tableId)
             : null;
@@ -130,6 +139,12 @@ export function attachRealtimeGateway(options: GatewayOptions) {
           const tableId = String(message.payload?.tableId ?? '');
           const actionData = actionEnvelopeSchema.parse(message.payload?.action);
           const table = services.poker.applyPlayerAction(tableId, session.userId, actionData.type, actionData.amount ?? 0);
+          services.coach.recordAction({
+            userId: session.userId,
+            type: actionData.type,
+            street: table.currentStreet,
+            handId: services.poker.getActiveHandId(tableId) ?? undefined,
+          });
           broadcastTable(clients, tableId, { event: 'table_update', payload: { table } });
           scheduleTurnTimeout(tableTurnTimers, services, clients, tableId, turnActionMs);
           return;
@@ -149,6 +164,13 @@ export function attachRealtimeGateway(options: GatewayOptions) {
           for (const payout of settled.payouts) {
             services.wallet.creditWinnings(payout.playerId, payout.amount, tableId);
             services.analytics.trackHand(payout.playerId, 120, settled.totalPot, payout.amount > 0);
+            services.community.recordSessionSummary(payout.playerId, {
+              durationMinutes: 20,
+              handsPlayed: 1,
+              netProfit: payout.amount,
+              biggestPot: settled.totalPot,
+            });
+            services.trust.recordCompletedSession(payout.playerId, true);
           }
           broadcastTable(clients, tableId, { event: 'hand_settled', payload: settled });
           clearTableTurnTimer(tableTurnTimers, tableId);
@@ -171,12 +193,19 @@ export function attachRealtimeGateway(options: GatewayOptions) {
       clients.delete(socket);
 
       if (!session || session.userId === 'guest' || !session.tableId) return;
+      services.community.setOnlineStatus(session.userId, false);
       const reconnect = services.sessions.issueReconnectToken(session.userId, session.tableId);
       const presenceKey = makePresenceKey(session.userId, session.tableId);
       clearPendingDisconnect(pendingDisconnects, presenceKey);
 
       const timeout = setTimeout(() => {
         pendingDisconnects.delete(presenceKey);
+        services.trust.recordAntiCheatSignal({
+          userId: session.userId,
+          category: 'suspicious-timing',
+          severity: 'low',
+          detail: 'Missed reconnect grace period; auto-fold was enforced.',
+        });
         const table = services.poker.forceFoldForTimeout(session.tableId as string, session.userId);
         broadcastTable(clients, session.tableId as string, {
           event: 'player_timed_out',

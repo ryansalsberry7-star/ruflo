@@ -4,6 +4,9 @@ import { PokerService } from '../src/services/poker-service.js';
 import { PaymentService } from '../src/services/payment-service.js';
 import { ComplianceService } from '../src/services/compliance-service.js';
 import { WalletService } from '../src/services/wallet-service.js';
+import { CoachService } from '../src/services/coach-service.js';
+import { CommunityService } from '../src/services/community-service.js';
+import { TrustService } from '../src/services/trust-service.js';
 
 test('settles hands with zero rake and full player-to-player pot distribution', () => {
   const poker = new PokerService();
@@ -91,4 +94,58 @@ test('supports replay retrieval for spectator and post-hand review flows', () =>
   assert.equal(replay.tableId, 'table-replay');
   assert.equal(replay.handId, settled.handId);
   assert.ok(replay.events.length >= 3);
+});
+
+test('maintains verified-human trust profiles and anti-cheat risk tracking', () => {
+  const trust = new TrustService();
+  trust.ensurePlayer('p-trust');
+  trust.markVerifiedHuman('p-trust');
+  trust.setSecurityVerificationStatus('p-trust', 'enhanced');
+  trust.recordAntiCheatSignal({
+    userId: 'p-trust',
+    category: 'suspicious-timing',
+    severity: 'low',
+    detail: 'Disconnected repeatedly before turn action timeout.',
+  });
+
+  const snapshot = trust.getPlayerTrust('p-trust');
+  assert.equal(snapshot.verifiedHuman, true);
+  assert.equal(snapshot.securityVerificationStatus, 'enhanced');
+  assert.ok(snapshot.trustScore > 60);
+  assert.equal(snapshot.noUndisclosedAiPlayers, true);
+});
+
+test('creates social progression and achievement milestones from tracked sessions', () => {
+  const community = new CommunityService();
+  community.ensureProfile('p-social', 'Nova');
+  community.recordSessionSummary('p-social', {
+    durationMinutes: 42,
+    handsPlayed: 180,
+    netProfit: 86,
+    biggestPot: 220,
+  });
+
+  const profile = community.getProfile('p-social');
+  const tracker = community.getSessionTracker('p-social');
+
+  assert.equal(profile.sessionsCompleted, 1);
+  assert.equal(profile.level >= 2, true);
+  assert.equal(tracker.totalSessions, 1);
+  assert.equal(tracker.totalHands, 180);
+  assert.equal(profile.achievements.some((entry) => entry.id === 'first-hand'), true);
+});
+
+test('generates ai coaching review summaries and hand advice', () => {
+  const coach = new CoachService();
+  coach.recordAction({ userId: 'p-coach', type: 'call', street: 'river' });
+  coach.recordAction({ userId: 'p-coach', type: 'call', street: 'river' });
+  coach.recordAction({ userId: 'p-coach', type: 'call', street: 'river' });
+  coach.recordAction({ userId: 'p-coach', type: 'fold', street: 'preflop' });
+
+  const review = coach.generateSessionReview('p-coach');
+
+  assert.equal(review.userId, 'p-coach');
+  assert.ok(review.summary.length > 0);
+  assert.ok(review.biggestMistakes.length > 0);
+  assert.ok(review.premium.personalizedPlan.length > 0);
 });

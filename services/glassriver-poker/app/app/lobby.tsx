@@ -31,6 +31,16 @@ export default function LobbyScreen() {
         </Pressable>
       </Link>
 
+      <Pressable style={styles.matchCard}>
+        <Text style={styles.matchTitle}>Find My Game</Text>
+        <Text style={styles.matchText}>Tell us your stakes, skill level, and pace. We recommend the best active tables instantly.</Text>
+        <View style={styles.matchTags}>
+          <Text style={styles.matchTag}>Micro stakes</Text>
+          <Text style={styles.matchTag}>Beginner-friendly</Text>
+          <Text style={styles.matchTag}>6-max</Text>
+        </View>
+      </Pressable>
+
       {tables.map((table) => (
         <Link key={table.name} href="/table" asChild>
           <Pressable style={styles.tableCard}>
@@ -78,6 +88,28 @@ const styles = StyleSheet.create({
     backgroundColor: '#172645',
     padding: 14,
     gap: 5,
+  },
+  matchCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#3D6BA8',
+    backgroundColor: '#142848',
+    padding: 14,
+    gap: 7,
+  },
+  matchTitle: { color: '#F8FBFF', fontSize: 16, fontWeight: '800' },
+  matchText: { color: '#C6D7F7', lineHeight: 19, fontSize: 13 },
+  matchTags: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  matchTag: {
+    color: '#E5F1FF',
+    backgroundColor: '#26487A',
+    borderWidth: 1,
+    borderColor: '#5887C8',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    fontSize: 11,
+    fontWeight: '700',
   },
   bannerTitle: { color: '#F3F7FF', fontSize: 16, fontWeight: '800' },
   bannerMeta: { color: '#BDD1F2', fontSize: 12 },
