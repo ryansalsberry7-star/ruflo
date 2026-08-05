@@ -9,6 +9,7 @@ import {
   evaluateBestHand,
   isBettingRoundClosed,
   postBlinds,
+  roundCents,
   type ActionType,
   type Card,
   type PlayerAction,
@@ -313,6 +314,18 @@ export class PokerService extends EventEmitter implements GameHostProvider {
       winners,
     });
 
+    // Zero-rake invariant. The facilitator model rests on never profiting from a pot,
+    // so this is enforced rather than asserted in policy: every chip that entered the
+    // pot must leave it in a payout. A rounding slip or a split-logic bug would quietly
+    // become house revenue, which is exactly the claim we cannot afford to get wrong.
+    const distributedCents = payouts.reduce((sum, payout) => sum + Math.round(payout.amount * 100), 0);
+    const potCents = Math.round(showdown.pot * 100);
+    if (distributedCents !== potCents) {
+      throw new Error(
+        `Zero-rake invariant violated on table ${tableId}: pot ${potCents} cents, distributed ${distributedCents} cents. Refusing to settle.`
+      );
+    }
+
     const settled: SettledHand = {
       tableId,
       handId: verification.handId,
@@ -346,9 +359,11 @@ export class PokerService extends EventEmitter implements GameHostProvider {
       });
     }
 
-    for (const payout of payouts) {
-      this.wallet?.creditWinnings(payout.playerId, payout.amount, tableId);
-    }
+    // Winnings return to the player's stack at the table, not to their wallet. Crediting
+    // the wallet here would silently cash a player out of every pot they won while their
+    // seat kept paying blinds, draining every stack toward zero over a session. The wallet
+    // moves only on buy-in and cash-out (see cashOutPlayer).
+    this.creditPayoutsToStacks(tableId, payouts);
 
     this.resetTableForNextHand(tableId);
     this.startDealerHandForTable(tableId);
@@ -474,6 +489,55 @@ export class PokerService extends EventEmitter implements GameHostProvider {
 
     this.activeDealerHands.set(tableId, hand);
     return hand;
+  }
+
+  /** Pays settled pots back into the winners' seats. Run before the next hand's blinds are posted. */
+  private creditPayoutsToStacks(tableId: string, payouts: SettledPayout[]): void {
+    if (payouts.length === 0) return;
+    const table = this.getTable(tableId);
+    const byPlayer = new Map<string, number>();
+    for (const payout of payouts) {
+      byPlayer.set(payout.playerId, (byPlayer.get(payout.playerId) ?? 0) + payout.amount);
+    }
+
+    this.tables.set(tableId, {
+      ...table,
+      players: table.players.map((entry) => {
+        const won = byPlayer.get(entry.id);
+        return won ? { ...entry, stack: roundCents(entry.stack + won) } : entry;
+      }),
+    });
+  }
+
+  /**
+   * Removes a player from the table and returns their remaining stack to their wallet.
+   *
+   * A player still live in a hand is folded first: chips already committed to the pot
+   * belong to the pot and cannot be taken back off the table mid-hand.
+   */
+  cashOutPlayer(tableId: string, playerId: string): { playerId: string; amount: number } {
+    const seated = this.getTable(tableId).players.find((entry) => entry.id === playerId);
+    if (!seated) throw new Error('Player is not seated at this table');
+
+    if (!seated.folded && !seated.allIn && this.getTable(tableId).currentTurn === playerId) {
+      this.applyPlayerAction(tableId, playerId, 'fold', 0);
+    }
+
+    const table = this.getTable(tableId);
+    const seat = table.players.find((entry) => entry.id === playerId);
+    // settleHand may have redealt while folding, so re-read the stack before removing the seat.
+    const amount = seat ? roundCents(seat.stack) : 0;
+    const remaining = table.players.filter((entry) => entry.id !== playerId);
+
+    this.tables.set(tableId, {
+      ...table,
+      players: remaining,
+      buttonIndex: remaining.length === 0 ? 0 : table.buttonIndex % remaining.length,
+      currentTurn: table.currentTurn === playerId ? null : table.currentTurn,
+    });
+
+    if (amount > 0) this.wallet?.creditWinnings(playerId, amount, tableId);
+    return { playerId, amount };
   }
 
   private resetTableForNextHand(tableId: string): void {

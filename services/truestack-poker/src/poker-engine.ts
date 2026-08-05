@@ -124,7 +124,7 @@ function makeDeck(): Card[] {
 }
 
 /** Round to the nearest cent so repeated float arithmetic can't drift over a long-running table. */
-function roundCents(amount: number): number {
+export function roundCents(amount: number): number {
   return Math.round(amount * 100) / 100;
 }
 

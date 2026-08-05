@@ -31,6 +31,90 @@ test('settles hands with zero rake and full player-to-player pot distribution', 
   assert.equal(Number(payoutTotal.toFixed(2)), Number(settled.totalPot.toFixed(2)));
 });
 
+test('settled pots are paid into the winner stacks, not cashed out to wallets', () => {
+  const wallet = new WalletService();
+  const poker = new PokerService(undefined, wallet);
+  for (const id of ['p1', 'p2']) wallet.ensureWallet(id);
+  const walletBefore = wallet.getWallet('p1').availableChips;
+
+  poker.createCashTable('table-payout', 'micro-1', [
+    { id: 'p1', name: 'Ada', stack: 100 },
+    { id: 'p2', name: 'Linus', stack: 100 },
+  ]);
+
+  poker.applyPlayerAction('table-payout', 'p1', 'raise', 10);
+  poker.applyPlayerAction('table-payout', 'p2', 'call', 10);
+  const settled = poker.settleHand('table-payout');
+
+  const winner = settled.payouts[0].playerId;
+  const seat = poker.getTable('table-payout').players.find((entry) => entry.id === winner);
+  assert.ok(seat);
+
+  // The winner keeps playing with the pot in their stack. Starting stack was 100, they
+  // committed 10, and the next hand's blind is already posted -- so the seat must hold
+  // more than the 90 they were left with after betting.
+  assert.ok(seat.stack > 90, `winner stack ${seat.stack} should include the won pot`);
+
+  // Winning must not move money in or out of the wallet; only buy-in and cash-out do.
+  assert.equal(wallet.getWallet('p1').availableChips, walletBefore);
+  assert.equal(wallet.getWallet('p2').availableChips, walletBefore);
+});
+
+test('chips are conserved at the table across repeated settled hands', () => {
+  const poker = new PokerService(undefined, undefined, { autoProgress: true });
+  const seats = ['p1', 'p2', 'p3'];
+  poker.createCashTable(
+    'table-conserve',
+    'micro-1',
+    seats.map((id) => ({ id, name: id, stack: 100 }))
+  );
+
+  const totalChips = () => {
+    const table = poker.getTable('table-conserve');
+    return Number((table.players.reduce((sum, p) => sum + p.stack, 0) + table.pot).toFixed(2));
+  };
+  const start = totalChips();
+
+  // Check/call several hands down. No rake means the table total can never change.
+  for (let hand = 0; hand < 5; hand += 1) {
+    for (let step = 0; step < 40; step += 1) {
+      const table = poker.getTable('table-conserve');
+      const turn = table.currentTurn;
+      if (!turn) break;
+      const actor = table.players.find((p) => p.id === turn);
+      if (!actor) break;
+      const toCall = table.currentBet - actor.streetContribution;
+      try {
+        poker.applyPlayerAction('table-conserve', turn, toCall > 0 ? 'call' : 'check', 0);
+      } catch {
+        break;
+      }
+    }
+    assert.equal(totalChips(), start, `chips leaked after hand ${hand + 1}`);
+  }
+});
+
+test('cashing out returns the remaining stack to the wallet and frees the seat', () => {
+  const wallet = new WalletService();
+  const poker = new PokerService(undefined, wallet);
+  wallet.ensureWallet('p1');
+  wallet.ensureWallet('p2');
+  const before = wallet.getWallet('p1').availableChips;
+
+  poker.createCashTable('table-cashout', 'micro-1', [
+    { id: 'p1', name: 'Ada', stack: 100 },
+    { id: 'p2', name: 'Linus', stack: 100 },
+  ]);
+
+  const seatedStack = poker.getTable('table-cashout').players.find((e) => e.id === 'p1')!.stack;
+  const result = poker.cashOutPlayer('table-cashout', 'p1');
+
+  assert.equal(result.amount, seatedStack);
+  assert.equal(wallet.getWallet('p1').availableChips, before + seatedStack);
+  assert.equal(poker.isPlayerSeated('table-cashout', 'p1'), false);
+  assert.throws(() => poker.cashOutPlayer('table-cashout', 'p1'), /not seated/);
+});
+
 test('quotes transparent transaction fees outside poker pots', () => {
   const payment = new PaymentService();
   const instantQuote = payment.quoteDeposit(100, 'instant');

@@ -22,6 +22,8 @@ export interface GameHostProvider {
     isPrivate?: boolean
   ): TableState;
   joinTable(tableId: string, player: { id: string; name: string; stack: number }): TableState;
+  /** Removes the player from the table and returns their remaining stack to their wallet. */
+  cashOutPlayer(tableId: string, playerId: string): { playerId: string; amount: number };
   getTable(tableId: string): TableState;
   isPlayerSeated(tableId: string, playerId: string): boolean;
 

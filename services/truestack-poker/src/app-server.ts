@@ -934,6 +934,27 @@ async function routeRequest(
     return;
   }
 
+  if (method === 'POST' && pathname.startsWith('/api/tables/') && pathname.endsWith('/leave')) {
+    const tableId = pathname.split('/')[3] ?? '';
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor) {
+      sendJson(res, 401, { error: 'Authentication required.' });
+      return;
+    }
+
+    if (!services.poker.isPlayerSeated(tableId, actor.id)) {
+      sendJson(res, 404, { error: 'You are not seated at this table.' });
+      return;
+    }
+
+    const cashedOut = services.poker.cashOutPlayer(tableId, actor.id);
+    sendJson(res, 200, {
+      cashedOut,
+      wallet: services.wallet.getWallet(actor.id),
+    });
+    return;
+  }
+
   if (method === 'POST' && pathname.startsWith('/api/tables/') && pathname.endsWith('/action')) {
     const tableId = pathname.split('/')[3] ?? '';
     const actor = readAuthenticatedUser(req, services);
