@@ -6,6 +6,7 @@ import { AnalyticsService } from './services/analytics-service.js';
 import { CoachService } from './services/coach-service.js';
 import { ComplianceService } from './services/compliance-service.js';
 import { CommunityService } from './services/community-service.js';
+import { HighHandService } from './services/high-hand-service.js';
 import { PaymentService } from './services/payment-service.js';
 import { PokerService } from './services/poker-service.js';
 import { SessionService } from './services/session-service.js';
@@ -24,6 +25,7 @@ export interface PlatformServices {
   trust: TrustService;
   community: CommunityService;
   coach: CoachService;
+  highHands: HighHandService;
 }
 
 export interface PlatformServerOptions {
@@ -35,7 +37,8 @@ export interface PlatformServerOptions {
 }
 
 export function buildDefaultServices(): PlatformServices {
-  const poker = new PokerService();
+  const highHands = new HighHandService();
+  const poker = new PokerService(highHands);
   const wallet = new WalletService();
   const payment = new PaymentService();
   const compliance = new ComplianceService();
@@ -76,7 +79,74 @@ export function buildDefaultServices(): PlatformServices {
     initialUsers.map((entry) => ({ id: entry.id, name: entry.username, stack: 1000 }))
   );
 
-  return { poker, wallet, payment, compliance, users, analytics, sessions, trust, community, coach };
+  highHands.seedDemoEntries([
+    {
+      handId: 'highlight-rf-001',
+      playerId: 'p1',
+      playerName: 'Ada',
+      handName: 'Royal Flush',
+      handScore: 1000,
+      achievedAt: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
+      tableId: 'cash-aurora',
+      points: 1000,
+      premiumOnly: true,
+      rewards: {
+        tournamentTickets: ['GlassRiver Major Ticket'],
+        satelliteEntries: ['VIP Satellite Seat'],
+        cosmeticItems: ['onyx-gold-card-back'],
+        profileBadges: ['royal-flush-champion'],
+        achievementTitles: ['Royal Flush Champion'],
+        clubRankingPoints: 500,
+      },
+      highlight: {
+        handId: 'highlight-rf-001',
+        playerId: 'p1',
+        playerName: 'Ada',
+        handName: 'Royal Flush',
+        tableId: 'cash-aurora',
+        achievedAt: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
+        cardsShown: ['Ah', 'Kh'],
+        communityCards: ['Qh', 'Jh', 'Th', '2c', '3d'],
+        replayEvents: [],
+        achievementEarned: 'Royal Flush Champion',
+        shareText: 'Ada hit a Royal Flush at cash-aurora and earned 1000 High Hand Club points.',
+      },
+    },
+    {
+      handId: 'highlight-sf-002',
+      playerId: 'p2',
+      playerName: 'Linus',
+      handName: 'Straight Flush',
+      handScore: 900,
+      achievedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
+      tableId: 'cash-aurora',
+      points: 900,
+      premiumOnly: true,
+      rewards: {
+        tournamentTickets: ['High Hand Championship Ticket'],
+        satelliteEntries: ['Weekend Satellite Seat'],
+        cosmeticItems: ['straight-flush-frame'],
+        profileBadges: ['highest-hand-this-week'],
+        achievementTitles: ['Highest Hand This Week'],
+        clubRankingPoints: 300,
+      },
+      highlight: {
+        handId: 'highlight-sf-002',
+        playerId: 'p2',
+        playerName: 'Linus',
+        handName: 'Straight Flush',
+        tableId: 'cash-aurora',
+        achievedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
+        cardsShown: ['9s', '8s'],
+        communityCards: ['7s', '6s', '5s', 'Kd', '2h'],
+        replayEvents: [],
+        achievementEarned: 'Highest Hand This Week',
+        shareText: 'Linus hit a Straight Flush at cash-aurora and earned 900 High Hand Club points.',
+      },
+    },
+  ]);
+
+  return { poker, wallet, payment, compliance, users, analytics, sessions, trust, community, coach, highHands };
 }
 
 export function createPlatformServer(services: PlatformServices, options: PlatformServerOptions = {}) {
@@ -237,6 +307,29 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
 
   if (method === 'GET' && pathname === '/api/lobby/tournaments') {
     sendJson(res, 200, { tournaments: services.poker.listTournaments() });
+    return;
+  }
+
+  if (method === 'GET' && pathname === '/api/high-hands/leaderboards') {
+    sendJson(res, 200, { leaderboards: services.highHands.getLeaderboards() });
+    return;
+  }
+
+  if (method === 'GET' && pathname.startsWith('/api/high-hands/history/')) {
+    const userId = pathname.split('/')[4] ?? '';
+    sendJson(res, 200, { userId, history: services.highHands.getUserHistory(userId) });
+    return;
+  }
+
+  if (method === 'GET' && pathname.startsWith('/api/high-hands/highlights/')) {
+    const handId = pathname.split('/')[4] ?? '';
+    sendJson(res, 200, { highlight: services.highHands.getHighlight(handId) });
+    return;
+  }
+
+  if (method === 'GET' && pathname.startsWith('/api/high-hands/premium/')) {
+    const userId = pathname.split('/')[4] ?? '';
+    sendJson(res, 200, { premium: services.highHands.getPremiumOverview(userId) });
     return;
   }
 

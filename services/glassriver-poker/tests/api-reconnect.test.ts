@@ -296,3 +296,37 @@ test('restores stored auth token sessions and revokes them on logout', async () 
     await app.stop();
   }
 });
+
+test('serves high hand leaderboards, history, premium benefits, and shareable highlights', async () => {
+  const services = buildDefaultServices();
+  const app = createPlatformServer(services);
+  const port = await app.start(0);
+
+  try {
+    const leaderboardRes = await fetch(`http://127.0.0.1:${port}/api/high-hands/leaderboards`);
+    const leaderboardPayload = await leaderboardRes.json();
+    assert.equal(leaderboardRes.status, 200);
+    assert.ok(Array.isArray(leaderboardPayload.leaderboards.day));
+    assert.equal(leaderboardPayload.leaderboards.allTime[0].handName, 'Royal Flush');
+
+    const historyRes = await fetch(`http://127.0.0.1:${port}/api/high-hands/history/p1`);
+    const historyPayload = await historyRes.json();
+    assert.equal(historyRes.status, 200);
+    assert.ok(Array.isArray(historyPayload.history));
+    assert.equal(historyPayload.history[0].playerId, 'p1');
+
+    const premiumRes = await fetch(`http://127.0.0.1:${port}/api/high-hands/premium/p1`);
+    const premiumPayload = await premiumRes.json();
+    assert.equal(premiumRes.status, 200);
+    assert.equal(premiumPayload.premium.proMember, true);
+    assert.ok(Array.isArray(premiumPayload.premium.dailyChallenges));
+
+    const highlightRes = await fetch(`http://127.0.0.1:${port}/api/high-hands/highlights/highlight-rf-001`);
+    const highlightPayload = await highlightRes.json();
+    assert.equal(highlightRes.status, 200);
+    assert.equal(highlightPayload.highlight.handName, 'Royal Flush');
+    assert.ok(Array.isArray(highlightPayload.highlight.cardsShown));
+  } finally {
+    await app.stop();
+  }
+});

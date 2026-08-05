@@ -12,6 +12,7 @@ import {
 import type { StakeLevel, TournamentListing, ZeroRakePolicy } from '../contracts.js';
 import { STAKE_LEVELS, TOURNAMENT_LISTINGS, ZERO_RAKE_POLICY } from '../contracts.js';
 import { DealerService, type DealerHandState, type HandVerificationRecord } from './dealer-service.js';
+import { HighHandService } from './high-hand-service.js';
 
 export interface SettledPayout {
   playerId: string;
@@ -58,6 +59,8 @@ export class PokerService {
   private readonly activeDealerHands = new Map<string, DealerHandState>();
   private readonly verificationRecords = new Map<string, HandVerificationRecord>();
   private readonly tableHandIndex = new Map<string, string[]>();
+
+  constructor(private readonly highHands?: HighHandService) {}
 
   createCashTable(tableId: string, stakeId: string, players: Array<{ id: string; name: string; stack: number }>, isPrivate = false): TableState {
     const stake = STAKE_LEVELS.find((entry) => entry.id === stakeId);
@@ -256,6 +259,22 @@ export class PokerService {
 
     const history = this.handHistory.get(tableId) ?? [];
     this.handHistory.set(tableId, [...history, settled]);
+
+    const playerNames = new Map(table.players.map((entry) => [entry.id, entry.name]));
+    for (const winnerId of winners) {
+      const holeCards = hand.holeCardsByPlayer[winnerId] ?? [];
+      this.highHands?.recordHighHand({
+        handId: verification.handId,
+        playerId: winnerId,
+        playerName: playerNames.get(winnerId) ?? winnerId,
+        handName: showdown.handRank,
+        achievedAt: settled.completedAt,
+        tableId,
+        cardsShown: holeCards.map((card) => card.id),
+        communityCards: hand.communityCards.map((card) => card.id),
+        replayEvents: verification.replay,
+      });
+    }
 
     this.resetTableForNextHand(tableId);
     this.startDealerHandForTable(tableId);

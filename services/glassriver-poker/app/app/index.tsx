@@ -1,9 +1,40 @@
 import { Link } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from './lib/auth';
+import { getJson } from './lib/api';
+
+interface HighHandEntry {
+  playerName: string;
+  handName: string;
+  tableId: string;
+  points: number;
+}
 
 export default function HomeScreen() {
   const { user, loading, logout } = useAuth();
+  const [dailyLeader, setDailyLeader] = useState<HighHandEntry | null>(null);
+  const [allTimeLeader, setAllTimeLeader] = useState<HighHandEntry | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadLeaders(): Promise<void> {
+      try {
+        const response = await getJson<{ leaderboards: { day: HighHandEntry[]; allTime: HighHandEntry[] } }>('/api/high-hands/leaderboards');
+        if (!active) return;
+        setDailyLeader(response.leaderboards.day[0] ?? null);
+        setAllTimeLeader(response.leaderboards.allTime[0] ?? null);
+      } catch {
+        if (!active) return;
+      }
+    }
+
+    void loadLeaders();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -49,6 +80,21 @@ export default function HomeScreen() {
         <Link href="/fair-play" asChild>
           <Pressable style={styles.inlineButton}>
             <Text style={styles.inlineButtonText}>Open fair play center</Text>
+          </Pressable>
+        </Link>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>High Hand Club</Text>
+        <Text style={styles.metric}>
+          Daily: {dailyLeader ? `${dailyLeader.playerName} • ${dailyLeader.handName} • ${dailyLeader.points} pts` : 'No qualifying hand yet today.'}
+        </Text>
+        <Text style={styles.metric}>
+          All-time: {allTimeLeader ? `${allTimeLeader.playerName} • ${allTimeLeader.handName} • ${allTimeLeader.tableId}` : 'Leaderboard initializing.'}
+        </Text>
+        <Link href="/premium" asChild>
+          <Pressable style={styles.inlineButton}>
+            <Text style={styles.inlineButtonText}>Open High Hand rewards</Text>
           </Pressable>
         </Link>
       </View>

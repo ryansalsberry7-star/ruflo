@@ -6,6 +6,7 @@ import { ComplianceService } from '../src/services/compliance-service.js';
 import { WalletService } from '../src/services/wallet-service.js';
 import { CoachService } from '../src/services/coach-service.js';
 import { CommunityService } from '../src/services/community-service.js';
+import { HighHandService } from '../src/services/high-hand-service.js';
 import { TrustService } from '../src/services/trust-service.js';
 
 test('settles hands with zero rake and full player-to-player pot distribution', () => {
@@ -148,4 +149,28 @@ test('generates ai coaching review summaries and hand advice', () => {
   assert.ok(review.summary.length > 0);
   assert.ok(review.biggestMistakes.length > 0);
   assert.ok(review.premium.personalizedPlan.length > 0);
+});
+
+test('tracks qualifying high hands with non-cash rewards and shareable highlights', () => {
+  const highHands = new HighHandService();
+  const entry = highHands.recordHighHand({
+    handId: 'hh-1',
+    playerId: 'p1',
+    playerName: 'Ada',
+    handName: 'royal flush',
+    achievedAt: new Date().toISOString(),
+    tableId: 'cash-aurora',
+    cardsShown: ['Ah', 'Kh'],
+    communityCards: ['Qh', 'Jh', 'Th', '2c', '3d'],
+    replayEvents: [],
+  });
+
+  assert.ok(entry);
+  assert.equal(entry?.rewards.tournamentTickets.length, 1);
+  assert.equal(entry?.rewards.satelliteEntries.length, 1);
+  assert.equal(entry?.rewards.clubRankingPoints, 500);
+
+  const highlight = highHands.getHighlight('hh-1');
+  assert.equal(highlight.achievementEarned, 'Royal Flush Champion');
+  assert.ok(highlight.shareText.includes('Royal Flush'));
 });
