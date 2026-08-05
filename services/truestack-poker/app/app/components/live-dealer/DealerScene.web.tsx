@@ -28,16 +28,33 @@ export function DealerScene({ cue, renderProfile, preferences }: DealerSceneProp
       <View style={styles.stageArch} />
       <View style={styles.stageGlow} />
       <View style={styles.dealerBust}>
-        <View style={styles.hair} />
+        <View style={styles.hairBack} />
+        <View style={styles.neck} />
+        <View style={styles.earLeft} />
+        <View style={styles.earRight} />
         <View style={styles.head}>
-          <View style={styles.eyeRow}>
-            <View style={styles.eye} />
-            <View style={styles.eye} />
+          <View style={styles.faceShade} />
+          <View style={styles.browRow}>
+            <View style={[styles.brow, styles.browLeft]} />
+            <View style={[styles.brow, styles.browRight]} />
           </View>
+          <View style={styles.eyeRow}>
+            <View style={styles.eye}>
+              <View style={styles.eyeHighlight} />
+            </View>
+            <View style={styles.eye}>
+              <View style={styles.eyeHighlight} />
+            </View>
+          </View>
+          <View style={styles.nose} />
+          <View style={styles.mouth} />
         </View>
         <View style={styles.shoulders}>
           <View style={styles.shirt} />
+          <View style={styles.lapelLeft} />
+          <View style={styles.lapelRight} />
           <View style={styles.tie} />
+          <View style={styles.tieKnot} />
         </View>
       </View>
       <View style={styles.stageDesk}>
@@ -128,43 +145,120 @@ const styles = StyleSheet.create({
   },
   dealerBust: {
     width: 132,
-    height: 124,
+    height: 132,
     alignItems: 'center',
     justifyContent: 'flex-end',
     marginBottom: 18,
   },
-  hair: {
+  hairBack: {
     position: 'absolute',
-    top: 6,
-    width: 52,
-    height: 26,
-    borderTopLeftRadius: 26,
+    top: 2,
+    width: 58,
+    height: 40,
+    borderTopLeftRadius: 30,
     borderTopRightRadius: 26,
-    borderBottomLeftRadius: 14,
-    borderBottomRightRadius: 14,
-    backgroundColor: '#463229',
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 20,
+    backgroundColor: '#3B2A22',
+    transform: [{ rotate: '-2deg' }],
+  },
+  neck: {
+    position: 'absolute',
+    bottom: 46,
+    width: 20,
+    height: 16,
+    borderRadius: 6,
+    backgroundColor: '#C79A7C',
+  },
+  earLeft: {
+    position: 'absolute',
+    bottom: 55,
+    left: 34,
+    width: 8,
+    height: 12,
+    borderRadius: 5,
+    backgroundColor: '#D7B097',
+  },
+  earRight: {
+    position: 'absolute',
+    bottom: 55,
+    right: 34,
+    width: 8,
+    height: 12,
+    borderRadius: 5,
+    backgroundColor: '#D7B097',
   },
   head: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 46,
+    height: 50,
+    borderRadius: 23,
     backgroundColor: '#D7B097',
-    marginBottom: -7,
+    marginBottom: 8,
     zIndex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
-  eyeRow: {
-    width: 18,
+  faceShade: {
+    position: 'absolute',
+    right: -6,
+    top: 4,
+    width: 26,
+    height: 46,
+    borderRadius: 20,
+    backgroundColor: 'rgba(120,82,58,0.16)',
+  },
+  browRow: {
+    width: 26,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 4,
+    marginBottom: 3,
+  },
+  brow: {
+    width: 8,
+    height: 2.5,
+    borderRadius: 2,
+    backgroundColor: '#3B2A22',
+  },
+  browLeft: {
+    transform: [{ rotate: '-8deg' }],
+  },
+  browRight: {
+    transform: [{ rotate: '8deg' }],
+  },
+  eyeRow: {
+    width: 22,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
   },
   eye: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
     backgroundColor: '#31261F',
+    alignItems: 'flex-end',
+  },
+  eyeHighlight: {
+    width: 1.5,
+    height: 1.5,
+    borderRadius: 1,
+    backgroundColor: '#F4F1EA',
+    marginTop: 0.5,
+  },
+  nose: {
+    width: 3,
+    height: 7,
+    borderRadius: 2,
+    backgroundColor: 'rgba(120,82,58,0.28)',
+    marginBottom: 3,
+  },
+  mouth: {
+    width: 12,
+    height: 3,
+    borderBottomLeftRadius: 6,
+    borderBottomRightRadius: 6,
+    backgroundColor: '#9C5C4C',
   },
   shoulders: {
     width: 116,
@@ -186,13 +280,41 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#F4F1EA',
   },
+  lapelLeft: {
+    position: 'absolute',
+    top: 8,
+    left: 30,
+    width: 16,
+    height: 26,
+    backgroundColor: '#14161C',
+    transform: [{ rotate: '22deg' }],
+    borderTopRightRadius: 4,
+  },
+  lapelRight: {
+    position: 'absolute',
+    top: 8,
+    right: 30,
+    width: 16,
+    height: 26,
+    backgroundColor: '#14161C',
+    transform: [{ rotate: '-22deg' }],
+    borderTopLeftRadius: 4,
+  },
   tie: {
     position: 'absolute',
-    top: 20,
+    top: 24,
     width: 8,
-    height: 42,
+    height: 38,
     borderRadius: 4,
     backgroundColor: '#B78A3A',
+  },
+  tieKnot: {
+    position: 'absolute',
+    top: 18,
+    width: 11,
+    height: 8,
+    borderRadius: 3,
+    backgroundColor: '#C79A42',
   },
   stageDesk: {
     position: 'absolute',
