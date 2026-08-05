@@ -3,7 +3,8 @@ import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
 import { useAuth } from './lib/auth';
-import { postJson, resolveWebSocketBaseUrl } from './lib/api';
+import { getJson, postJson, resolveWebSocketBaseUrl } from './lib/api';
+import { getPlayerCharacter, resolveCharacterId } from './lib/playerIdentity';
 
 interface TablePlayer {
   id: string;
@@ -30,6 +31,17 @@ interface TableEventEnvelope {
   payload?: Record<string, unknown>;
 }
 
+interface PlayerIdentityProfile {
+  customization: {
+    playerCharacter: string;
+  };
+}
+
+interface PlayerTrustSummary {
+  verifiedHuman: boolean;
+  trustScore: number;
+}
+
 const TABLE_ID = 'cash-aurora';
 const MAX_SEATS = 9;
 
@@ -53,35 +65,6 @@ const SUIT_META: Record<string, { symbol: string; color: string }> = {
   H: { symbol: '\u2665', color: '#D6304A' },
   D: { symbol: '\u2666', color: '#D6304A' },
 };
-
-const AVATAR_COLORS = ['#3E8FFF', '#9B5CF6', '#22B07D', '#E0A83B', '#E0576B', '#3BB2E0'];
-
-function avatarColor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i += 1) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
-}
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
-// Fun animal characters give every seat a recognisable, playful identity.
-const CHARACTERS = [
-  '\uD83E\uDD8A', '\uD83D\uDC3C', '\uD83D\uDC2F', '\uD83E\uDD81',
-  '\uD83D\uDC35', '\uD83D\uDC28', '\uD83D\uDC38', '\uD83E\uDD89',
-  '\uD83D\uDC19', '\uD83D\uDC37', '\uD83D\uDC32', '\uD83E\uDD85',
-  '\uD83D\uDC3A', '\uD83E\uDD9D', '\uD83D\uDC2E', '\uD83D\uDC30',
-];
-
-function characterFor(name: string): string {
-  let hash = 7;
-  for (let i = 0; i < name.length; i += 1) hash = (hash * 131 + name.charCodeAt(i)) >>> 0;
-  return CHARACTERS[hash % CHARACTERS.length];
-}
 
 function PlayingCard({ id, faceDown }: { id?: string; faceDown?: boolean }): JSX.Element {
   if (faceDown || !id) {
@@ -174,9 +157,11 @@ interface SeatPodProps {
   isTurn: boolean;
   onSit?: () => void;
   seated: boolean;
+  characterId?: string | null;
+  verifiedHuman?: boolean;
 }
 
-function SeatPod({ player, isHero, isTurn, onSit, seated }: SeatPodProps): JSX.Element {
+function SeatPod({ player, isHero, isTurn, onSit, seated, characterId, verifiedHuman }: SeatPodProps): JSX.Element {
   if (!player) {
     const label = isHero ? 'Taking seat\u2026' : seated ? 'Open' : 'Sit here';
     return (
@@ -204,6 +189,7 @@ function SeatPod({ player, isHero, isTurn, onSit, seated }: SeatPodProps): JSX.E
       : isTurn
         ? 'Acting\u2026'
         : 'Active';
+  const character = getPlayerCharacter(resolveCharacterId(characterId, player.name));
   return (
     <View style={[seatStyles.pod, isHero && seatStyles.heroPod, isTurn && seatStyles.turnPod]}>
       {isTurn ? <PulseRing /> : null}
@@ -215,15 +201,20 @@ function SeatPod({ player, isHero, isTurn, onSit, seated }: SeatPodProps): JSX.E
           </>
         ) : null}
       </View>
-      <View style={[seatStyles.avatar, { backgroundColor: avatarColor(player.name) }]}>
-        <Text style={seatStyles.avatarEmoji}>{characterFor(player.name)}</Text>
+      <View style={[seatStyles.avatar, { backgroundColor: character.aura, borderColor: character.accent }]}>
+        <Text style={seatStyles.avatarEmoji}>{character.emoji}</Text>
+        {verifiedHuman ? (
+          <View style={seatStyles.trustShield}>
+            <Text style={seatStyles.trustShieldText}>H</Text>
+          </View>
+        ) : null}
         {player.isDealer ? (
           <View style={seatStyles.dealerButton}>
             <Text style={seatStyles.dealerButtonText}>D</Text>
           </View>
         ) : null}
       </View>
-      <View style={[seatStyles.nameTag, { borderColor: isHero ? '#7ED3FF' : avatarColor(player.name) }]}>
+      <View style={[seatStyles.nameTag, { borderColor: isHero ? '#F1C46E' : character.accent }]}>
         <Text style={seatStyles.name} numberOfLines={1}>
           {isHero ? 'You' : player.name}
         </Text>
@@ -247,6 +238,8 @@ export default function TableScreen() {
   const [heroSlot, setHeroSlot] = useState<number | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [hapticsEnabled, setHapticsEnabled] = useState(true);
+  const [playerProfiles, setPlayerProfiles] = useState<Record<string, PlayerIdentityProfile>>({});
+  const [playerTrust, setPlayerTrust] = useState<Record<string, PlayerTrustSummary>>({});
   const reconnectTokenRef = useRef<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const manualCloseRef = useRef(false);
@@ -353,6 +346,48 @@ export default function TableScreen() {
     return () => clearInterval(timer);
   }, [countdown]);
 
+  useEffect(() => {
+    const playerIds = Array.from(new Set((table?.players ?? []).map((player) => player.id)));
+    if (playerIds.length === 0) return;
+
+    let active = true;
+
+    async function loadPlayerMeta(): Promise<void> {
+      try {
+        const entries = await Promise.all(
+          playerIds.map(async (playerId) => {
+            const [profileResponse, trustResponse] = await Promise.all([
+              getJson<{ profile: PlayerIdentityProfile }>(`/api/profiles/${playerId}`),
+              getJson<{ trust: PlayerTrustSummary }>(`/api/trust/${playerId}`),
+            ]);
+            return [playerId, profileResponse.profile, trustResponse.trust] as const;
+          })
+        );
+
+        if (!active) return;
+
+        const nextProfiles: Record<string, PlayerIdentityProfile> = {};
+        const nextTrust: Record<string, PlayerTrustSummary> = {};
+
+        for (const [playerId, profile, trust] of entries) {
+          nextProfiles[playerId] = profile;
+          nextTrust[playerId] = trust;
+        }
+
+        setPlayerProfiles(nextProfiles);
+        setPlayerTrust(nextTrust);
+      } catch {
+        if (!active) return;
+      }
+    }
+
+    void loadPlayerMeta();
+
+    return () => {
+      active = false;
+    };
+  }, [table?.players]);
+
   async function triggerFeedback(enabled: boolean, kind: 'selection' | 'success' | 'warning'): Promise<void> {
     if (!enabled) return;
     try {
@@ -437,6 +472,7 @@ export default function TableScreen() {
   const tableWidth = Math.min(windowWidth - 20, 600);
   const tableHeight = Math.round(tableWidth * 0.72);
   const seated = !!mySeat;
+  const heroCharacter = getPlayerCharacter(user.playerCharacter);
   const effectiveHeroSlot = seated ? heroSlot ?? 0 : null;
   const opponents = (table?.players ?? []).filter((player) => player.id !== user.userId);
   let oppCursor = 0;
@@ -452,7 +488,23 @@ export default function TableScreen() {
       <View style={styles.headerRow}>
         <Text style={styles.eyebrow}>PLAY-MONEY BETA • AUTHENTICATED TABLE</Text>
         <Text style={styles.title}>Aurora Table • $0.05/$0.10</Text>
-        <Text style={styles.subtitle}>Play-money preview • server-dealt • no real-money wagering in this build.</Text>
+        <Text style={styles.subtitle}>A brass-and-felt table view with chosen characters, trust markers, and server-authenticated seat presence.</Text>
+      </View>
+
+      <View style={styles.heroBanner}>
+        <View style={[styles.heroBannerAvatar, { backgroundColor: heroCharacter.aura, borderColor: heroCharacter.accent }]}>
+          <Text style={styles.heroBannerEmoji}>{heroCharacter.emoji}</Text>
+          {user.trust.verifiedHuman ? (
+            <View style={styles.heroShield}>
+              <Text style={styles.heroShieldText}>H</Text>
+            </View>
+          ) : null}
+        </View>
+        <View style={styles.heroBannerCopy}>
+          <Text style={styles.heroBannerTitle}>{heroCharacter.name}</Text>
+          <Text style={styles.heroBannerMeta}>{heroCharacter.title}</Text>
+          <Text style={styles.heroBannerNote}>{user.trust.verifiedHuman ? 'Verified human shield is visible on your seat.' : 'Verification shield appears after human checks complete.'}</Text>
+        </View>
       </View>
 
       <View style={styles.tableStrip}>
@@ -528,7 +580,7 @@ export default function TableScreen() {
               key={index}
               style={[
                 feltStyles.seatAnchor,
-                { left: slot.x * tableWidth - 32, top: slot.y * tableHeight - 44 },
+                { left: slot.x * tableWidth - 36, top: slot.y * tableHeight - 48 },
               ]}
             >
               <SeatPod
@@ -536,6 +588,8 @@ export default function TableScreen() {
                 isHero={isHero}
                 isTurn={!!player && table?.currentTurn === player.id}
                 seated={seated}
+                characterId={player ? playerProfiles[player.id]?.customization.playerCharacter : null}
+                verifiedHuman={player ? playerTrust[player.id]?.verifiedHuman : false}
                 onSit={!player ? () => void handleSit(index) : undefined}
               />
             </View>
@@ -603,14 +657,52 @@ export default function TableScreen() {
 }
 
 const styles = StyleSheet.create({
-  centered: { flex: 1, backgroundColor: '#2A0C12', justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
+  centered: { flex: 1, backgroundColor: '#17090D', justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
   message: { color: '#F3DCD2', fontSize: 15, textAlign: 'center', lineHeight: 22 },
-  screen: { flex: 1, backgroundColor: '#2A0C12' },
-  content: { paddingHorizontal: 10, paddingTop: 40, paddingBottom: 8, gap: 12 },
-  headerRow: { gap: 4 },
-  eyebrow: { color: '#7ED3FF', fontSize: 11, fontWeight: '700', letterSpacing: 1.6 },
-  title: { color: '#F5F8FF', fontSize: 24, fontWeight: '800' },
-  subtitle: { color: '#9EB0D2', fontSize: 13, lineHeight: 19 },
+  screen: { flex: 1, backgroundColor: '#17090D' },
+  content: { paddingHorizontal: 10, paddingTop: 32, paddingBottom: 16, gap: 14 },
+  headerRow: { gap: 4, paddingHorizontal: 8 },
+  eyebrow: { color: '#F1C46E', fontSize: 11, fontWeight: '800', letterSpacing: 1.6 },
+  title: { color: '#FFF4E7', fontSize: 24, fontWeight: '900' },
+  subtitle: { color: '#D2BCB4', fontSize: 13, lineHeight: 19 },
+  heroBanner: {
+    marginHorizontal: 8,
+    borderWidth: 1,
+    borderColor: '#5E3032',
+    backgroundColor: '#2A1118',
+    borderRadius: 24,
+    padding: 14,
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+  },
+  heroBannerAvatar: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroBannerEmoji: { fontSize: 30 },
+  heroShield: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#3A2414',
+    borderWidth: 1,
+    borderColor: '#E7C57D',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroShieldText: { color: '#F9E8BD', fontSize: 11, fontWeight: '900' },
+  heroBannerCopy: { flex: 1, gap: 2 },
+  heroBannerTitle: { color: '#FFF4E7', fontSize: 18, fontWeight: '900' },
+  heroBannerMeta: { color: '#F7D9A2', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
+  heroBannerNote: { color: '#D2BCB4', fontSize: 12, lineHeight: 17 },
   statusCard: {
     backgroundColor: '#0F1730',
     borderColor: '#253454',
@@ -629,17 +721,17 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 8,
     paddingHorizontal: 16,
-    backgroundColor: '#0F1730',
-    borderColor: '#243454',
+    backgroundColor: '#241319',
+    borderColor: '#6A4047',
     borderWidth: 1,
     borderRadius: 999,
     alignSelf: 'center',
   },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4A5A7A' },
   liveDotOn: { backgroundColor: '#4ADE80', shadowColor: '#4ADE80', shadowOpacity: 0.9, shadowRadius: 6 },
-  stripText: { color: '#D9E5FF', fontSize: 12, fontWeight: '700', letterSpacing: 0.8 },
-  stripDivider: { color: '#3F5170', fontSize: 12 },
-  stripTimer: { color: '#7ED3FF', fontSize: 12, fontWeight: '800' },
+  stripText: { color: '#F0DED0', fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
+  stripDivider: { color: '#7A4A53', fontSize: 12 },
+  stripTimer: { color: '#F1C46E', fontSize: 12, fontWeight: '900' },
   tableCard: {
     backgroundColor: '#0A1226',
     borderRadius: 24,
@@ -670,76 +762,78 @@ const styles = StyleSheet.create({
   seatMeta: { color: '#96B2E2', fontSize: 12 },
   audioPanel: {
     borderWidth: 1,
-    borderColor: '#243454',
-    backgroundColor: '#0D1530',
-    borderRadius: 14,
-    padding: 12,
-    gap: 10,
-  },
-  audioRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  audioLabel: { color: '#D9E5FF', fontSize: 14, fontWeight: '600' },
-  controlsPanel: {
-    borderWidth: 1,
-    borderColor: '#243454',
-    backgroundColor: '#0E1731',
+    borderColor: '#4B2630',
+    backgroundColor: '#221017',
     borderRadius: 18,
     padding: 12,
     gap: 10,
+    marginHorizontal: 8,
   },
-  raiseLabel: { color: '#F4F8FF', fontSize: 16, fontWeight: '700' },
-  sitHint: { color: '#7ED3FF', fontSize: 14, fontWeight: '700', textAlign: 'center' },
+  audioRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  audioLabel: { color: '#FFF4E7', fontSize: 14, fontWeight: '700' },
+  controlsPanel: {
+    borderWidth: 1,
+    borderColor: '#4B2630',
+    backgroundColor: '#221017',
+    borderRadius: 20,
+    padding: 12,
+    gap: 10,
+    marginHorizontal: 8,
+  },
+  raiseLabel: { color: '#FFF4E7', fontSize: 16, fontWeight: '800' },
+  sitHint: { color: '#F1C46E', fontSize: 14, fontWeight: '800', textAlign: 'center' },
   disabledButton: { opacity: 0.4 },
   quickRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   quickButton: {
-    borderColor: '#334D7B',
+    borderColor: '#7A4A53',
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 7,
-    backgroundColor: '#13213E',
+    backgroundColor: '#3C1D26',
   },
-  quickText: { color: '#D7E5FF', fontSize: 12, fontWeight: '700' },
+  quickText: { color: '#FFF0D8', fontSize: 12, fontWeight: '800' },
   actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   actionButton: {
     flexBasis: '31%',
-    borderRadius: 12,
-    backgroundColor: '#1C2D4F',
+    borderRadius: 14,
+    backgroundColor: '#3C1D26',
     paddingVertical: 12,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#35527E',
+    borderColor: '#7A4A53',
   },
-  foldButton: { backgroundColor: '#402133', borderColor: '#84506D' },
-  raiseButton: { backgroundColor: '#17345B', borderColor: '#4C86D3' },
-  actionButtonText: { color: '#F5F8FF', fontWeight: '700', fontSize: 13 },
-  footerLinks: { flexDirection: 'row', gap: 10 },
+  foldButton: { backgroundColor: '#4D1D27', borderColor: '#A55B65' },
+  raiseButton: { backgroundColor: '#553710', borderColor: '#F1C46E' },
+  actionButtonText: { color: '#FFF4E7', fontWeight: '800', fontSize: 13 },
+  footerLinks: { flexDirection: 'row', gap: 10, marginHorizontal: 8 },
   linkButton: {
     flex: 1,
-    borderRadius: 12,
-    backgroundColor: '#13213E',
+    borderRadius: 14,
+    backgroundColor: '#221017',
     alignItems: 'center',
     paddingVertical: 13,
     borderWidth: 1,
-    borderColor: '#334D7B',
+    borderColor: '#7A4A53',
   },
-  linkButtonText: { color: '#E8F2FF', fontWeight: '700' },
+  linkButtonText: { color: '#FFF4E7', fontWeight: '800' },
   primaryButton: {
-    backgroundColor: '#3E8FFF',
+    backgroundColor: '#F1C46E',
     borderRadius: 16,
     alignItems: 'center',
     paddingVertical: 16,
     paddingHorizontal: 24,
   },
-  primaryText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  primaryText: { color: '#2A1118', fontSize: 16, fontWeight: '900' },
   feltWrap: { alignItems: 'center', paddingBottom: 14 },
 });
 
 const feltStyles = StyleSheet.create({
   felt: {
     position: 'relative',
-    backgroundColor: '#0C6B3F',
+    backgroundColor: '#0A5A38',
     borderWidth: 10,
-    borderColor: '#5A3A22',
+    borderColor: '#6C4325',
     alignSelf: 'center',
     shadowColor: '#000',
     shadowOpacity: 0.5,
@@ -758,7 +852,7 @@ const feltStyles = StyleSheet.create({
   },
   feltGlow: {
     position: 'absolute',
-    backgroundColor: 'rgba(120,255,190,0.10)',
+    backgroundColor: 'rgba(228,201,131,0.10)',
   },
   feltInner: {
     position: 'absolute',
@@ -811,7 +905,7 @@ const feltStyles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 2,
   },
-  seatAnchor: { position: 'absolute', width: 64, alignItems: 'center' },
+  seatAnchor: { position: 'absolute', width: 72, alignItems: 'center' },
   tableCaption: { color: '#8FA6CC', fontSize: 12, textAlign: 'center', marginTop: 30 },
 });
 
@@ -841,34 +935,46 @@ const cardStyles = StyleSheet.create({
 
 const seatStyles = StyleSheet.create({
   pod: {
-    width: 64,
+    width: 72,
     alignItems: 'center',
-    gap: 2,
+    gap: 3,
     paddingVertical: 6,
-    paddingHorizontal: 3,
-    borderRadius: 12,
-    backgroundColor: 'rgba(8,16,32,0.82)',
+    paddingHorizontal: 4,
+    borderRadius: 16,
+    backgroundColor: 'rgba(20,10,16,0.88)',
     borderWidth: 1,
-    borderColor: '#23324E',
+    borderColor: '#5B323B',
   },
-  heroPod: { borderColor: '#3E8FFF', backgroundColor: 'rgba(20,40,74,0.92)' },
-  turnPod: { borderColor: '#7ED3FF', shadowColor: '#7ED3FF', shadowOpacity: 0.7, shadowRadius: 8 },
-  emptyPod: { borderStyle: 'dashed', borderColor: '#3C4E70', backgroundColor: 'rgba(8,16,32,0.5)' },
+  heroPod: { borderColor: '#F1C46E', backgroundColor: 'rgba(45,21,29,0.96)' },
+  turnPod: { borderColor: '#F1C46E', shadowColor: '#F1C46E', shadowOpacity: 0.45, shadowRadius: 8 },
+  emptyPod: { borderStyle: 'dashed', borderColor: '#6A4047', backgroundColor: 'rgba(20,10,16,0.55)' },
   openPod: { borderColor: '#4ADE80', backgroundColor: 'rgba(12,40,26,0.72)' },
   pressedPod: { opacity: 0.6, transform: [{ scale: 0.96 }] },
   cardsRow: { flexDirection: 'row', gap: 3, height: 24, marginBottom: 1 },
   holeBack: { width: 16, height: 23, borderRadius: 3, backgroundColor: '#17345B', borderWidth: 1, borderColor: '#4C86D3' },
   avatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.35)',
   },
-  avatarText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
-  avatarEmoji: { fontSize: 18, lineHeight: 22 },
+  avatarEmoji: { fontSize: 20, lineHeight: 22 },
+  trustShield: {
+    position: 'absolute',
+    right: -4,
+    bottom: -5,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#3A2414',
+    borderWidth: 1,
+    borderColor: '#E7C57D',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trustShieldText: { color: '#F9E8BD', fontSize: 8, fontWeight: '900' },
   dealerButton: {
     position: 'absolute',
     right: -6,
@@ -883,13 +989,13 @@ const seatStyles = StyleSheet.create({
     borderColor: '#0B1220',
   },
   dealerButtonText: { color: '#0B1220', fontSize: 10, fontWeight: '900' },
-  pulseRing: { position: 'absolute', top: -5, left: -5, right: -5, bottom: -5, borderRadius: 14, borderWidth: 2, borderColor: '#7ED3FF' },
-  nameTag: { borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1, backgroundColor: 'rgba(6,12,24,0.72)', borderWidth: 1, marginTop: 1 },
-  name: { color: '#EAF1FF', fontSize: 11, fontWeight: '700', maxWidth: 56 },
+  pulseRing: { position: 'absolute', top: -5, left: -5, right: -5, bottom: -5, borderRadius: 18, borderWidth: 2, borderColor: '#F1C46E' },
+  nameTag: { borderRadius: 9, paddingHorizontal: 6, paddingVertical: 1, backgroundColor: 'rgba(14,7,10,0.78)', borderWidth: 1, marginTop: 1 },
+  name: { color: '#FFF4E7', fontSize: 11, fontWeight: '800', maxWidth: 60 },
   stackRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 },
-  stack: { color: '#7ED3FF', fontSize: 11, fontWeight: '800' },
-  status: { color: '#8299BE', fontSize: 10, fontWeight: '600' },
-  statusActive: { color: '#7ED3FF' },
+  stack: { color: '#F1C46E', fontSize: 11, fontWeight: '900' },
+  status: { color: '#D6B6A4', fontSize: 10, fontWeight: '700' },
+  statusActive: { color: '#FFF4E7' },
   emptyAvatar: {
     width: 34,
     height: 34,
@@ -900,8 +1006,8 @@ const seatStyles = StyleSheet.create({
     borderColor: '#3C4E70',
     borderStyle: 'dashed',
   },
-  emptyPlus: { color: '#5E77A6', fontSize: 20, fontWeight: '700' },
-  emptyLabel: { color: '#6E86AE', fontSize: 10, fontWeight: '600' },
+  emptyPlus: { color: '#9F7A80', fontSize: 20, fontWeight: '700' },
+  emptyLabel: { color: '#B69297', fontSize: 10, fontWeight: '700' },
   openAvatar: { borderColor: '#4ADE80', borderStyle: 'solid' },
   openLabel: { color: '#8FE9B4', fontWeight: '800' },
 });

@@ -21,7 +21,7 @@ export default function LoginScreen() {
       <View style={styles.header}>
         <Text style={styles.eyebrow}>AUTH</Text>
         <Text style={styles.title}>Secure login</Text>
-        <Text style={styles.description}>Sign into an existing player identity and update every screen from one shared session context.</Text>
+        <Text style={styles.description}>Re-enter your table identity and restore the same trust, character, and profile state across the app.</Text>
       </View>
 
       <View style={styles.card}>
@@ -38,37 +38,37 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#060816', padding: 24, justifyContent: 'space-between' },
+  screen: { flex: 1, backgroundColor: '#17090D', padding: 24, justifyContent: 'space-between' },
   header: { gap: 10, marginTop: 40 },
-  eyebrow: { color: '#7ED3FF', fontSize: 12, fontWeight: '700', letterSpacing: 2 },
-  title: { color: '#F8F7FF', fontSize: 30, fontWeight: '800' },
-  description: { color: '#A7B0CF', fontSize: 15, lineHeight: 22 },
+  eyebrow: { color: '#F1C46E', fontSize: 12, fontWeight: '800', letterSpacing: 2 },
+  title: { color: '#FFF4E7', fontSize: 30, fontWeight: '900' },
+  description: { color: '#D8C4BA', fontSize: 15, lineHeight: 22 },
   card: {
-    backgroundColor: '#12172D',
-    borderRadius: 20,
+    backgroundColor: '#221017',
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: '#23304E',
+    borderColor: '#4B2630',
     padding: 16,
     gap: 10,
     marginBottom: 24,
   },
-  label: { color: '#F8F7FF', fontSize: 14, fontWeight: '700' },
+  label: { color: '#FFF4E7', fontSize: 14, fontWeight: '800' },
   input: {
-    backgroundColor: '#0B1124',
-    borderRadius: 12,
+    backgroundColor: '#12070B',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#33466F',
-    color: '#F8F7FF',
+    borderColor: '#6A4047',
+    color: '#FFF4E7',
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  hint: { color: '#95A8D0', fontSize: 12, lineHeight: 18 },
+  hint: { color: '#BFA8A0', fontSize: 12, lineHeight: 18 },
   error: { color: '#FFB4B4', fontSize: 12, lineHeight: 18 },
   button: {
-    backgroundColor: '#3E8FFF',
-    borderRadius: 14,
+    backgroundColor: '#F1C46E',
+    borderRadius: 16,
     alignItems: 'center',
     paddingVertical: 14,
   },
-  buttonText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  buttonText: { color: '#2A1118', fontSize: 15, fontWeight: '900' },
 });

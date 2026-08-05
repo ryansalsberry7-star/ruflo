@@ -1,15 +1,18 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { PLAYER_CHARACTERS, getPlayerCharacter, type PlayerCharacterId } from './lib/playerIdentity';
 import { useAuth } from './lib/auth';
 
 export default function RegistrationScreen() {
   const { register, loading, error } = useAuth();
   const [username, setUsername] = useState('RiverFox');
+  const [playerCharacter, setPlayerCharacter] = useState<PlayerCharacterId>('river-fox');
+  const activeCharacter = getPlayerCharacter(playerCharacter);
 
   async function handleRegister(): Promise<void> {
     try {
-      await register({ username });
+      await register({ username, playerCharacter });
       router.replace('/');
     } catch {
       // Context already exposes the error state.
@@ -17,58 +20,127 @@ export default function RegistrationScreen() {
   }
 
   return (
-    <View style={styles.screen}>
-      <View style={styles.header}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <View style={styles.heroCard}>
         <Text style={styles.eyebrow}>AUTH</Text>
         <Text style={styles.title}>Create account</Text>
-        <Text style={styles.description}>Register a new player identity and make it the active session across coaching, trust, and community screens.</Text>
+        <Text style={styles.description}>Choose a table identity that follows you from the lobby to the felt, then register it as your active player session.</Text>
+        <View style={styles.previewRow}>
+          <View style={[styles.previewAvatar, { backgroundColor: activeCharacter.aura, borderColor: activeCharacter.accent }]}>
+            <Text style={styles.previewEmoji}>{activeCharacter.emoji}</Text>
+          </View>
+          <View style={styles.previewCopy}>
+            <Text style={styles.previewName}>{activeCharacter.name}</Text>
+            <Text style={styles.previewTitle}>{activeCharacter.title}</Text>
+            <Text style={styles.previewDescription}>{activeCharacter.description}</Text>
+          </View>
+        </View>
       </View>
 
       <View style={styles.card}>
         <Text style={styles.label}>Username</Text>
         <TextInput value={username} onChangeText={setUsername} autoCapitalize="words" style={styles.input} placeholder="RiverFox" placeholderTextColor="#6D7EA7" />
-        <Text style={styles.hint}>A unique player ID will be generated automatically if needed.</Text>
+        <Text style={styles.hint}>A unique player ID is generated automatically, and you can change your character later from profile.</Text>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.label}>Choose your character</Text>
+        <View style={styles.characterGrid}>
+          {PLAYER_CHARACTERS.map((character) => {
+            const selected = character.id === playerCharacter;
+            return (
+              <Pressable
+                key={character.id}
+                onPress={() => setPlayerCharacter(character.id)}
+                style={[
+                  styles.characterCard,
+                  { backgroundColor: character.aura },
+                  selected && { borderColor: character.glow, shadowColor: character.accent, shadowOpacity: 0.4, shadowRadius: 12 },
+                ]}
+              >
+                <Text style={styles.characterEmoji}>{character.emoji}</Text>
+                <Text style={styles.characterName}>{character.name}</Text>
+                <Text style={styles.characterTitle}>{character.title}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text style={styles.hint}>Verified-human shielding appears on your avatar after trust checks are complete.</Text>
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Pressable style={styles.button} onPress={() => void handleRegister()} disabled={loading || username.trim().length === 0}>
           <Text style={styles.buttonText}>{loading ? 'Creating account...' : 'Create account'}</Text>
         </Pressable>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#060816', padding: 24, justifyContent: 'space-between' },
-  header: { gap: 10, marginTop: 40 },
-  eyebrow: { color: '#7ED3FF', fontSize: 12, fontWeight: '700', letterSpacing: 2 },
-  title: { color: '#F8F7FF', fontSize: 30, fontWeight: '800' },
-  description: { color: '#A7B0CF', fontSize: 15, lineHeight: 22 },
-  card: {
-    backgroundColor: '#12172D',
-    borderRadius: 20,
+  screen: { flex: 1, backgroundColor: '#17090D' },
+  content: { padding: 22, paddingTop: 38, paddingBottom: 28, gap: 16 },
+  heroCard: {
+    backgroundColor: '#2A1118',
+    borderRadius: 28,
     borderWidth: 1,
-    borderColor: '#23304E',
-    padding: 16,
-    gap: 10,
-    marginBottom: 24,
+    borderColor: '#5E3032',
+    padding: 20,
+    gap: 12,
   },
-  label: { color: '#F8F7FF', fontSize: 14, fontWeight: '700' },
-  input: {
-    backgroundColor: '#0B1124',
-    borderRadius: 12,
+  eyebrow: { color: '#F1C46E', fontSize: 12, fontWeight: '800', letterSpacing: 2 },
+  title: { color: '#FFF4E7', fontSize: 32, fontWeight: '900' },
+  description: { color: '#D8C4BA', fontSize: 15, lineHeight: 22 },
+  previewRow: { flexDirection: 'row', gap: 14, alignItems: 'center' },
+  previewAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+  },
+  previewEmoji: { fontSize: 34 },
+  previewCopy: { flex: 1, gap: 2 },
+  previewName: { color: '#FFF4E7', fontSize: 20, fontWeight: '800' },
+  previewTitle: { color: '#F7D9A2', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
+  previewDescription: { color: '#D8C4BA', fontSize: 13, lineHeight: 19 },
+  card: {
+    backgroundColor: '#221017',
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: '#33466F',
-    color: '#F8F7FF',
+    borderColor: '#4B2630',
+    padding: 16,
+    gap: 12,
+  },
+  label: { color: '#FFF4E7', fontSize: 15, fontWeight: '800' },
+  input: {
+    backgroundColor: '#12070B',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#6A4047',
+    color: '#FFF4E7',
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  hint: { color: '#95A8D0', fontSize: 12, lineHeight: 18 },
+  characterGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  characterCard: {
+    width: '47%',
+    minHeight: 118,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,244,231,0.18)',
+    padding: 12,
+    justifyContent: 'space-between',
+  },
+  characterEmoji: { fontSize: 28 },
+  characterName: { color: '#FFF8EF', fontSize: 15, fontWeight: '800' },
+  characterTitle: { color: '#F6E7C8', fontSize: 11, lineHeight: 16, fontWeight: '700' },
+  hint: { color: '#BFA8A0', fontSize: 12, lineHeight: 18 },
   error: { color: '#FFB4B4', fontSize: 12, lineHeight: 18 },
   button: {
-    backgroundColor: '#3E8FFF',
-    borderRadius: 14,
+    backgroundColor: '#F1C46E',
+    borderRadius: 16,
     alignItems: 'center',
     paddingVertical: 14,
   },
-  buttonText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  buttonText: { color: '#2A1118', fontSize: 15, fontWeight: '900' },
 });

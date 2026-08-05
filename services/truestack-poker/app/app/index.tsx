@@ -1,8 +1,10 @@
 import { Link } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { VerifiedHumanBadge } from './components/VerifiedHumanBadge';
 import { useAuth } from './lib/auth';
 import { getJson } from './lib/api';
+import { getPlayerCharacter } from './lib/playerIdentity';
 
 interface HighHandEntry {
   playerName: string;
@@ -15,6 +17,7 @@ export default function HomeScreen() {
   const { user, loading, logout } = useAuth();
   const [dailyLeader, setDailyLeader] = useState<HighHandEntry | null>(null);
   const [allTimeLeader, setAllTimeLeader] = useState<HighHandEntry | null>(null);
+  const activeCharacter = getPlayerCharacter(user?.playerCharacter);
 
   useEffect(() => {
     let active = true;
@@ -38,10 +41,20 @@ export default function HomeScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <View style={styles.hero}>
+      <View style={styles.heroCard}>
         <Text style={styles.eyebrow}>ZERO-RAKE POKER</Text>
         <Text style={styles.title}>TRUE STACK Poker</Text>
-        <Text style={styles.subtitle}>No house edge. No percentage from pots. Premium dealer-led play-money table experience for this App Store build.</Text>
+        <Text style={styles.subtitle}>A warmer, table-first mobile shell for fair-play poker: no house edge, no bot opponents, and no percentage taken from pots.</Text>
+        <View style={styles.heroRow}>
+          <View style={[styles.heroAvatar, user ? { backgroundColor: activeCharacter.aura, borderColor: activeCharacter.accent } : styles.heroAvatarIdle]}>
+            <Text style={styles.heroAvatarEmoji}>{user ? activeCharacter.emoji : '\u2660'}</Text>
+          </View>
+          <View style={styles.heroStats}>
+            <Text style={styles.heroLabel}>{user ? activeCharacter.name : 'Guest seat open'}</Text>
+            <Text style={styles.heroMeta}>{user ? activeCharacter.title : 'Sign in to claim a character and trust shield.'}</Text>
+            {user?.trust.verifiedHuman ? <VerifiedHumanBadge /> : null}
+          </View>
+        </View>
       </View>
 
       <View style={styles.sessionCard}>
@@ -139,57 +152,78 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    backgroundColor: '#060816',
+    backgroundColor: '#17090D',
   },
   content: {
     paddingHorizontal: 24,
-    paddingTop: 58,
+    paddingTop: 40,
     paddingBottom: 24,
-    gap: 14,
+    gap: 16,
   },
-  hero: {
-    gap: 8,
-    marginBottom: 4,
+  heroCard: {
+    gap: 10,
+    backgroundColor: '#2A1118',
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: '#5E3032',
+    padding: 22,
   },
   eyebrow: {
-    color: '#7ED3FF',
+    color: '#F1C46E',
     fontSize: 12,
     letterSpacing: 2,
-    fontWeight: '700',
-  },
-  title: {
-    color: '#F8F7FF',
-    fontSize: 42,
     fontWeight: '800',
   },
+  title: {
+    color: '#FFF4E7',
+    fontSize: 42,
+    fontWeight: '900',
+  },
   subtitle: {
-    color: '#A7B0CF',
-    fontSize: 16,
+    color: '#D8C4BA',
+    fontSize: 15,
     lineHeight: 24,
   },
+  heroRow: { flexDirection: 'row', gap: 14, alignItems: 'center', marginTop: 4 },
+  heroAvatar: {
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroAvatarIdle: {
+    backgroundColor: '#3C1D26',
+    borderColor: '#7A4A53',
+  },
+  heroAvatarEmoji: { color: '#FFF4E7', fontSize: 34 },
+  heroStats: { flex: 1, gap: 4 },
+  heroLabel: { color: '#FFF4E7', fontSize: 20, fontWeight: '800' },
+  heroMeta: { color: '#D8C4BA', fontSize: 13, lineHeight: 18 },
   card: {
-    backgroundColor: '#12172D',
+    backgroundColor: '#221017',
     borderRadius: 24,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#23304E',
+    borderColor: '#4B2630',
     gap: 10,
   },
   sessionCard: {
-    backgroundColor: '#11213E',
+    backgroundColor: '#241319',
     borderRadius: 24,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#315C97',
+    borderColor: '#6A4047',
     gap: 10,
   },
   cardTitle: {
-    color: '#F8F7FF',
+    color: '#FFF4E7',
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   metric: {
-    color: '#BFC7E2',
+    color: '#F0DED0',
     fontSize: 14,
     lineHeight: 20,
   },
@@ -197,15 +231,15 @@ const styles = StyleSheet.create({
     marginTop: 2,
     alignSelf: 'flex-start',
     borderWidth: 1,
-    borderColor: '#486294',
+    borderColor: '#7A4A53',
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 7,
-    backgroundColor: '#1A2744',
+    backgroundColor: '#3C1D26',
   },
   inlineButtonText: {
-    color: '#D9E7FF',
-    fontWeight: '700',
+    color: '#FFF0D8',
+    fontWeight: '800',
     fontSize: 12,
   },
   actions: {
@@ -216,35 +250,36 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   primaryButton: {
-    backgroundColor: '#3E8FFF',
+    backgroundColor: '#F1C46E',
     borderRadius: 16,
     alignItems: 'center',
     paddingVertical: 16,
   },
   primaryText: {
-    color: '#FFF',
+    color: '#2A1118',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '900',
   },
   secondaryButton: {
     flex: 1,
-    borderColor: '#4C5F8B',
+    borderColor: '#7A4A53',
     borderWidth: 1,
     borderRadius: 16,
     alignItems: 'center',
     paddingVertical: 16,
+    backgroundColor: '#221017',
   },
   secondaryText: {
-    color: '#F8F7FF',
+    color: '#FFF4E7',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   footerRow: {
     alignItems: 'center',
     paddingTop: 4,
   },
   footerText: {
-    color: '#7C8AAF',
+    color: '#A98B83',
     fontSize: 12,
     textAlign: 'center',
   },

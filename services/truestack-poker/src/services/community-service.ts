@@ -1,5 +1,29 @@
 export type SkillTier = 'beginner' | 'intermediate' | 'advanced' | 'pro';
 
+const PLAYER_CHARACTER_IDS = [
+  'river-fox',
+  'night-owl',
+  'gold-lion',
+  'neon-panther',
+  'storm-raven',
+  'ember-wolf',
+  'tide-koi',
+  'lucky-hare',
+] as const;
+
+function normalizePlayerCharacter(value: string | undefined, seed: string): string {
+  if (value && PLAYER_CHARACTER_IDS.includes(value as (typeof PLAYER_CHARACTER_IDS)[number])) {
+    return value;
+  }
+
+  let hash = 11;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 131 + seed.charCodeAt(index)) >>> 0;
+  }
+
+  return PLAYER_CHARACTER_IDS[hash % PLAYER_CHARACTER_IDS.length];
+}
+
 export interface PlayerAchievement {
   id: string;
   title: string;
@@ -39,6 +63,7 @@ export interface PlayerProfile {
     dealerAvatar: string;
     profileFrame: string;
     chipDesign: string;
+    playerCharacter: string;
   };
 }
 
@@ -113,6 +138,7 @@ export class CommunityService {
         dealerAvatar: 'aurora-croupier',
         profileFrame: 'clean-silver',
         chipDesign: 'ceramic-black',
+        playerCharacter: normalizePlayerCharacter(undefined, `${userId}:${username}`),
       },
     };
 

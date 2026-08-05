@@ -5,6 +5,7 @@ import { clearStoredAuthToken, readStoredAuthToken, writeStoredAuthToken } from 
 export interface AuthenticatedUser {
   userId: string;
   username: string;
+  playerCharacter: string;
   trust: {
     trustScore: number;
     verifiedHuman: boolean;
@@ -17,7 +18,7 @@ interface AuthContextValue {
   loading: boolean;
   error: string | null;
   login: (input: { userId?: string; username?: string }) => Promise<void>;
-  register: (input: { userId?: string; username: string }) => Promise<void>;
+  register: (input: { userId?: string; username: string; playerCharacter?: string }) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -86,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function register(input: { userId?: string; username: string }): Promise<void> {
+  async function register(input: { userId?: string; username: string; playerCharacter?: string }): Promise<void> {
     setLoading(true);
     setError(null);
     try {

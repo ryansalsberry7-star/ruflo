@@ -245,6 +245,10 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
     const requestedUserId = String(body.userId ?? '').trim();
     const userId = createAvailableUserId(services, requestedUserId || username);
     const user = services.users.createUser(userId, username);
+    const requestedCharacter = typeof body.playerCharacter === 'string' ? body.playerCharacter.trim() : '';
+    if (requestedCharacter) {
+      services.community.setCustomization(user.id, { playerCharacter: requestedCharacter });
+    }
     const authSession = services.sessions.issueAuthToken(user.id);
 
     sendJson(res, 200, {
@@ -627,6 +631,7 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
     if (typeof body.dealerAvatar === 'string') customizationUpdate.dealerAvatar = body.dealerAvatar;
     if (typeof body.profileFrame === 'string') customizationUpdate.profileFrame = body.profileFrame;
     if (typeof body.chipDesign === 'string') customizationUpdate.chipDesign = body.chipDesign;
+    if (typeof body.playerCharacter === 'string') customizationUpdate.playerCharacter = body.playerCharacter;
 
     const profile = services.community.setCustomization(userId, customizationUpdate);
     sendJson(res, 200, { profile });
@@ -952,6 +957,7 @@ function buildAuthSessionPayload(services: PlatformServices, userId: string, use
     userId,
     username,
     trust: services.trust.getPlayerTrust(userId),
+    playerCharacter: services.community.getProfile(userId).customization.playerCharacter,
   };
 }
 
