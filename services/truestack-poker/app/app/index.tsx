@@ -86,6 +86,16 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.card}>
+        <Text style={styles.cardTitle}>Real-money account</Text>
+        <Text style={styles.metric}>Identity verification, deposits, withdrawals, and responsible-gaming limits.</Text>
+        <Link href="/compliance" asChild>
+          <Pressable style={styles.inlineButton}>
+            <Text style={styles.inlineButtonText}>Manage verification &amp; funding</Text>
+          </Pressable>
+        </Link>
+      </View>
+
+      <View style={styles.card}>
         <Text style={styles.cardTitle}>High Hand Club</Text>
         <Text style={styles.metric}>
           Daily: {dailyLeader ? `${dailyLeader.playerName} • ${dailyLeader.handName} • ${dailyLeader.points} pts` : 'No qualifying hand yet today.'}
