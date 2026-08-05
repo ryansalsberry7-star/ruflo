@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { resolve } from 'node:path';
 import { URL } from 'node:url';
 import { actionEnvelopeSchema } from './contracts.js';
 import { attachRealtimeGateway } from './realtime/ws-gateway.js';
@@ -43,17 +44,21 @@ export interface PlatformServerOptions {
 }
 
 export interface BuildServicesOptions {
-  /** Persist user accounts to data/runtime/users.json. Off by default so test runs stay isolated. */
-  persistUsers?: boolean;
+  /** Persist users, wallets, trust profiles, and high-hand history to data/runtime/*.json. Off by default so test runs stay isolated. */
+  persist?: boolean;
 }
 
 /** Dev-only seed password for the bundled demo accounts (Ada/Linus/Grace). Override via env for shared environments. */
 export const SEED_USER_PASSWORD = process.env.TRUESTACK_SEED_PASSWORD?.trim() || 'truestack-dev-only';
 
+function runtimeStoragePath(persist: boolean | undefined, filename: string): string | undefined {
+  return persist ? resolve(process.cwd(), 'data/runtime', filename) : undefined;
+}
+
 export function buildDefaultServices(options: BuildServicesOptions = {}): PlatformServices {
-  const highHands = new HighHandService();
+  const highHands = new HighHandService({ storagePath: runtimeStoragePath(options.persist, 'high-hands.json') });
   const poker = new PokerService(highHands);
-  const wallet = new WalletService();
+  const wallet = new WalletService({ storagePath: runtimeStoragePath(options.persist, 'wallets.json') });
   const payment = new PaymentService();
   const realMoneyEnabled = process.env.TRUESTACK_REALMONEY_ENABLED === 'true';
   const authorizedJurisdictions = (process.env.TRUESTACK_AUTHORIZED_JURISDICTIONS ?? '')
@@ -63,10 +68,10 @@ export function buildDefaultServices(options: BuildServicesOptions = {}): Platfo
   const regionalGating = new RegionalGatingService(authorizedJurisdictions);
   const compliance = new ComplianceService({ realMoneyEnabled, regionalGating });
   const funding = new FundingService(wallet, payment, compliance);
-  const users = new UserService({ storagePath: options.persistUsers ? undefined : null });
+  const users = new UserService({ storagePath: runtimeStoragePath(options.persist, 'users.json') });
   const analytics = new AnalyticsService();
   const sessions = new SessionService();
-  const trust = new TrustService();
+  const trust = new TrustService({ storagePath: runtimeStoragePath(options.persist, 'trust.json') });
   const community = new CommunityService();
   const coach = new CoachService();
 

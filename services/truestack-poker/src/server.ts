@@ -1,6 +1,6 @@
 import { buildDefaultServices, createPlatformServer, SEED_USER_PASSWORD } from './app-server.js';
 
-const services = buildDefaultServices({ persistUsers: true });
+const services = buildDefaultServices({ persist: true });
 const app = createPlatformServer(services);
 const targetPort = Number(process.env.PORT ?? '4040');
 

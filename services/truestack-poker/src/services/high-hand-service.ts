@@ -1,4 +1,5 @@
 import type { HandVerificationRecord } from './dealer-service.js';
+import { loadJsonFile, saveJsonFile } from './persistence.js';
 
 export type HighHandPeriod = 'day' | 'week' | 'month' | 'all-time';
 
@@ -64,11 +65,23 @@ const HAND_SCORES: Record<string, number> = {
   'high card': 100,
 };
 
+interface HighHandServiceOptions {
+  storagePath?: string | null;
+}
+
 export class HighHandService {
   private readonly entries: HighHandEntry[] = [];
   private readonly userHistory = new Map<string, HighHandEntry[]>();
   private readonly highlights = new Map<string, HighHandHighlight>();
   private readonly qualifyingHands = new Set<string>(DEFAULT_QUALIFYING_HANDS);
+
+  constructor(private readonly options: HighHandServiceOptions = {}) {
+    const persisted = loadJsonFile<HighHandEntry[]>(this.options.storagePath);
+    for (const entry of persisted ?? []) {
+      this.entries.push(entry);
+      this.indexEntry(entry);
+    }
+  }
 
   seedDemoEntries(entries: HighHandEntry[]): void {
     for (const entry of entries) {
@@ -229,8 +242,17 @@ export class HighHandService {
 
   private storeEntry(entry: HighHandEntry): void {
     this.entries.push(entry);
+    this.indexEntry(entry);
+    this.persist();
+  }
+
+  private indexEntry(entry: HighHandEntry): void {
     this.highlights.set(entry.handId, entry.highlight);
     const byUser = this.userHistory.get(entry.playerId) ?? [];
     this.userHistory.set(entry.playerId, [...byUser, entry]);
+  }
+
+  private persist(): void {
+    saveJsonFile(this.options.storagePath, this.entries);
   }
 }

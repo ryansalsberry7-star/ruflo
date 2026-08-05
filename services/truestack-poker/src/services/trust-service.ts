@@ -1,3 +1,5 @@
+import { loadJsonFile, saveJsonFile } from './persistence.js';
+
 export type SecurityVerificationStatus = 'unverified' | 'email-verified' | 'id-verified' | 'enhanced';
 
 export type AntiCheatSignalCategory =
@@ -51,10 +53,21 @@ interface InternalTrustRecord {
   suspiciousSignals: number;
 }
 
+interface TrustServiceOptions {
+  storagePath?: string | null;
+}
+
 export class TrustService {
   private readonly players = new Map<string, InternalTrustRecord>();
   private readonly signals = new Map<string, AntiCheatSignal[]>();
   private readonly collusionAssessments = new Map<string, CollusionAssessment>();
+
+  constructor(private readonly options: TrustServiceOptions = {}) {
+    const persisted = loadJsonFile<InternalTrustRecord[]>(this.options.storagePath);
+    for (const record of persisted ?? []) {
+      this.players.set(record.userId, record);
+    }
+  }
 
   ensurePlayer(userId: string): PlayerTrustSnapshot {
     const existing = this.players.get(userId);
@@ -72,6 +85,7 @@ export class TrustService {
     };
 
     this.players.set(userId, created);
+    this.persist();
     return this.toSnapshot(created);
   }
 
@@ -90,6 +104,7 @@ export class TrustService {
     };
 
     this.players.set(userId, next);
+    this.persist();
     return this.toSnapshot(next);
   }
 
@@ -105,6 +120,7 @@ export class TrustService {
     };
 
     this.players.set(userId, next);
+    this.persist();
     return this.toSnapshot(next);
   }
 
@@ -119,6 +135,7 @@ export class TrustService {
     };
 
     this.players.set(userId, next);
+    this.persist();
     return this.toSnapshot(next);
   }
 
@@ -139,6 +156,7 @@ export class TrustService {
     };
 
     this.players.set(input.userId, next);
+    this.persist();
     return this.toSnapshot(next);
   }
 
@@ -251,5 +269,9 @@ export class TrustService {
 
   private clampTrust(score: number): number {
     return Math.max(0, Math.min(99, Math.round(score)));
+  }
+
+  private persist(): void {
+    saveJsonFile(this.options.storagePath, Array.from(this.players.values()));
   }
 }

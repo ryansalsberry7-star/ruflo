@@ -1,6 +1,5 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
 import { verifyPassword } from './password-service.js';
+import { loadJsonFile, saveJsonFile } from './persistence.js';
 
 export interface UserProfile {
   id: string;
@@ -96,36 +95,18 @@ export class UserService {
   }
 
   private loadPersistedUsers(): void {
-    const storagePath = this.getStoragePath();
-    if (!storagePath) return;
-
-    try {
-      const raw = readFileSync(storagePath, 'utf8');
-      const parsed = JSON.parse(raw) as { profile: UserProfile; passwordHash: string }[];
-      for (const entry of parsed) {
-        this.users.set(entry.profile.id, entry.profile);
-        this.passwordHashes.set(entry.profile.id, entry.passwordHash);
-      }
-    } catch {
-      // Missing or invalid storage should not block startup.
+    const records = loadJsonFile<{ profile: UserProfile; passwordHash: string }[]>(this.options.storagePath);
+    for (const entry of records ?? []) {
+      this.users.set(entry.profile.id, entry.profile);
+      this.passwordHashes.set(entry.profile.id, entry.passwordHash);
     }
   }
 
   private persistUsers(): void {
-    const storagePath = this.getStoragePath();
-    if (!storagePath) return;
-
     const records = Array.from(this.users.values()).map((profile) => ({
       profile,
       passwordHash: this.passwordHashes.get(profile.id) ?? '',
     }));
-
-    mkdirSync(dirname(storagePath), { recursive: true });
-    writeFileSync(storagePath, JSON.stringify(records, null, 2), 'utf8');
-  }
-
-  private getStoragePath(): string | null {
-    if (this.options.storagePath === null) return null;
-    return this.options.storagePath ?? resolve(process.cwd(), 'data/runtime/users.json');
+    saveJsonFile(this.options.storagePath, records);
   }
 }
