@@ -11,6 +11,7 @@ import { useAuth } from './lib/auth';
 import { getJson, postJson, resolveWebSocketBaseUrl } from './lib/api';
 import { getPlayerCharacter, resolveCharacterId } from './lib/playerIdentity';
 import { useTablePreferences } from './lib/tablePreferences';
+import { colors } from './lib/theme';
 import type { DeckColorMode } from './lib/theme';
 import type { ActionKind, TablePlayer, TableState } from './lib/betting';
 
@@ -122,7 +123,7 @@ function ChipStack({ size = 'sm' }: { size?: 'sm' | 'lg' }): JSX.Element {
   const h = large ? 7 : 5;
   return (
     <View style={{ width: w, height: h * 3 + 4, justifyContent: 'flex-end' }}>
-      {['#E0576B', '#3E8FFF', '#E0A83B'].map((c, i) => (
+      {['#1E1E24', '#1F7A44', '#B03B3B'].map((c, i) => (
         <View
           key={c}
           style={{
@@ -133,7 +134,7 @@ function ChipStack({ size = 'sm' }: { size?: 'sm' | 'lg' }): JSX.Element {
             borderRadius: h,
             backgroundColor: c,
             borderWidth: 1,
-            borderColor: 'rgba(255,255,255,0.5)',
+            borderColor: 'rgba(241,196,110,0.4)',
           }}
         />
       ))}
@@ -176,29 +177,23 @@ function SeatPod({
 }: SeatPodProps): JSX.Element {
   if (!player) {
     const label = isHero ? 'Taking seat\u2026' : seated ? 'Open' : 'Sit here';
+    const inviting = !seated && !isHero;
     return (
       <Pressable
         onPress={onSit}
         disabled={!onSit}
-        style={({ pressed }) => [
-          seatStyles.pod,
-          { width: podWidth },
-          seatStyles.emptyPod,
-          !seated && !isHero && seatStyles.openPod,
-          pressed && seatStyles.pressedPod,
-        ]}
+        style={({ pressed }) => [seatStyles.pod, { width: podWidth }, pressed && seatStyles.pressedPod]}
       >
         <View style={seatStyles.cardsRow}>
           <View style={[seatStyles.holeBack, seatStyles.holeBackTiltLeft]} />
           <View style={[seatStyles.holeBack, seatStyles.holeBackTiltRight]} />
         </View>
-        <View style={[seatStyles.chairBack, seatStyles.emptyChairBack, !seated && !isHero && seatStyles.openChairBack]}>
-          <View style={[seatStyles.emptyAvatar, !seated && !isHero && seatStyles.openAvatar]}>
-            <Text style={seatStyles.emptyPlus}>+</Text>
+        <View style={[seatStyles.plate, seatStyles.emptyPlate, inviting && seatStyles.invitingPlate]}>
+          <View style={[seatStyles.emptyAvatar, inviting && seatStyles.invitingAvatar]}>
+            <Text style={[seatStyles.emptyPlus, inviting && seatStyles.invitingPlus]}>+</Text>
           </View>
-          <Text style={[seatStyles.emptyLabel, !seated && !isHero && seatStyles.openLabel]}>{label}</Text>
+          <Text style={[seatStyles.emptyLabel, inviting && seatStyles.invitingLabel]}>{label}</Text>
         </View>
-        <View style={[seatStyles.chairSeat, !seated && !isHero && seatStyles.openChairSeat]} />
       </Pressable>
     );
   }
@@ -211,7 +206,7 @@ function SeatPod({
         : 'Active';
   const character = getPlayerCharacter(resolveCharacterId(characterId, player.name));
   return (
-    <View style={[seatStyles.pod, { width: podWidth }, isHero && seatStyles.heroPod, isTurn && seatStyles.turnPod]}>
+    <View style={[seatStyles.pod, { width: podWidth }]}>
       {isTurn ? <PulseRing /> : null}
       <View style={seatStyles.cardsRow}>
         {!player.folded ? (
@@ -230,21 +225,25 @@ function SeatPod({
           <Text style={seatStyles.lastActionText}>{lastAction}</Text>
         </View>
       ) : null}
-      <View style={[seatStyles.chairBack, isHero && seatStyles.heroChairBack]}>
-        <View style={[seatStyles.avatar, { backgroundColor: character.aura, borderColor: character.accent }]}>
-          <Text style={seatStyles.avatarEmoji}>{character.emoji}</Text>
+      <View style={[seatStyles.plate, isHero && seatStyles.heroPlate, isTurn && seatStyles.turnPlate]}>
+        <View style={seatStyles.avatarRing}>
+          <View style={[seatStyles.avatarAccentRing, { borderColor: character.accent }]}>
+            <View style={[seatStyles.avatar, { backgroundColor: character.aura }]}>
+              <Text style={seatStyles.avatarEmoji}>{character.emoji}</Text>
+            </View>
+          </View>
           {verifiedHuman ? (
             <View style={seatStyles.trustShield}>
               <Text style={seatStyles.trustShieldText}>H</Text>
             </View>
           ) : null}
+          {player.isDealer ? (
+            <View style={seatStyles.dealerButton}>
+              <Text style={seatStyles.dealerButtonText}>D</Text>
+            </View>
+          ) : null}
         </View>
-        {player.isDealer ? (
-          <View style={seatStyles.dealerButton}>
-            <Text style={seatStyles.dealerButtonText}>D</Text>
-          </View>
-        ) : null}
-        <View style={[seatStyles.nameTag, { borderColor: isHero ? '#F1C46E' : character.accent }]}>
+        <View style={[seatStyles.nameTag, { borderColor: isHero ? colors.gold : character.accent }]}>
           <Text style={seatStyles.name} numberOfLines={1}>
             {isHero ? 'You' : player.name}
           </Text>
@@ -259,9 +258,8 @@ function SeatPod({
           <ChipStack />
           <Text style={seatStyles.stack}>${player.stack.toFixed(0)}</Text>
         </View>
+        <Text style={[seatStyles.status, isTurn && seatStyles.statusActive]}>{status}</Text>
       </View>
-      <View style={seatStyles.chairSeat} />
-      <Text style={[seatStyles.status, isTurn && seatStyles.statusActive]}>{status}</Text>
     </View>
   );
 }
@@ -624,16 +622,7 @@ export default function TableScreen() {
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
       <View style={styles.roomStage}>
-        <View style={styles.skylineBand}>
-          <View style={styles.palmShadowLeft} />
-          <View style={styles.palmShadowRight} />
-          <View style={styles.balconyRail} />
-          <View style={styles.balconyPostsRow}>
-            {[0, 1, 2, 3, 4, 5].map((post) => (
-              <View key={post} style={styles.balconyPost} />
-            ))}
-          </View>
-        </View>
+        <View style={styles.roomVignette} pointerEvents="none" />
 
         <View style={styles.feltWrap}>
           <View
@@ -642,6 +631,7 @@ export default function TableScreen() {
               { width: tableWidth, height: tableHeight, borderRadius: tableHeight / 2 },
             ]}
           >
+            <View pointerEvents="none" style={[feltStyles.feltPinstripe, { borderRadius: tableHeight / 2 }]} />
             <View style={[feltStyles.feltRim, { borderRadius: tableHeight / 2 }]} />
             <View
               pointerEvents="none"
@@ -905,12 +895,12 @@ const styles = StyleSheet.create({
   consoleShelf: {
     marginHorizontal: 8,
     borderWidth: 1,
-    borderColor: '#8B857B',
+    borderColor: colors.border,
     borderRadius: 12,
     overflow: 'hidden',
-    backgroundColor: '#DAD7CF',
-    shadowColor: '#261A14',
-    shadowOpacity: 0.16,
+    backgroundColor: colors.surface,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 5 },
   },
@@ -938,67 +928,21 @@ const styles = StyleSheet.create({
   roomStage: {
     marginHorizontal: 8,
     borderWidth: 1,
-    borderColor: '#6C6457',
+    borderColor: '#3A2019',
     borderRadius: 18,
     overflow: 'hidden',
-    backgroundColor: '#BFC8D5',
+    backgroundColor: '#12070A',
   },
-  skylineBand: {
-    height: 132,
-    backgroundColor: '#B9D7EC',
-    position: 'relative',
-  },
-  palmShadowLeft: {
+  // Soft dark radial-ish glow above the felt, standing in for pit lighting without a
+  // real gradient dependency (layered flat views, low-opacity center to dark edge).
+  roomVignette: {
     position: 'absolute',
-    left: 10,
-    top: 8,
-    width: 80,
-    height: 62,
-    borderTopLeftRadius: 50,
-    borderTopRightRadius: 14,
-    borderBottomRightRadius: 40,
-    backgroundColor: 'rgba(52, 95, 63, 0.28)',
-    transform: [{ rotate: '-12deg' }],
-  },
-  palmShadowRight: {
-    position: 'absolute',
-    right: 10,
-    top: 10,
-    width: 86,
-    height: 58,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 54,
-    borderBottomLeftRadius: 46,
-    backgroundColor: 'rgba(45, 90, 58, 0.24)',
-    transform: [{ rotate: '10deg' }],
-  },
-  balconyRail: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 22,
-    height: 14,
-    backgroundColor: '#ECEAE4',
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#8B857B',
-  },
-  balconyPostsRow: {
-    position: 'absolute',
-    left: 14,
-    right: 14,
-    bottom: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  balconyPost: {
-    width: 12,
-    height: 28,
-    borderTopLeftRadius: 5,
-    borderTopRightRadius: 5,
-    backgroundColor: '#EAE7E0',
-    borderWidth: 1,
-    borderColor: '#8B857B',
+    top: -60,
+    left: '10%',
+    right: '10%',
+    height: 160,
+    borderRadius: 999,
+    backgroundColor: 'rgba(241,196,110,0.05)',
   },
   statusCard: {
     backgroundColor: '#0F1730',
@@ -1018,19 +962,19 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 9,
     paddingHorizontal: 14,
-    backgroundColor: '#DBD7D0',
-    borderColor: '#8C867C',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 8,
     alignSelf: 'stretch',
     marginHorizontal: 8,
   },
   windowDotRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4A5A7A' },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.textFaint },
   liveDotOn: { backgroundColor: '#4ADE80', shadowColor: '#4ADE80', shadowOpacity: 0.9, shadowRadius: 6 },
-  stripText: { color: '#332E29', fontSize: 11, fontWeight: '800', letterSpacing: 0.8 },
-  stripDivider: { color: '#7D756A', fontSize: 12 },
-  stripTimer: { color: '#8F4B12', fontSize: 12, fontWeight: '900' },
+  stripText: { color: colors.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 0.8 },
+  stripDivider: { color: colors.textFaint, fontSize: 12 },
+  stripTimer: { color: colors.gold, fontSize: 12, fontWeight: '900' },
   tableCard: {
     backgroundColor: '#0A1226',
     borderRadius: 24,
@@ -1061,13 +1005,13 @@ const styles = StyleSheet.create({
   seatMeta: { color: '#96B2E2', fontSize: 12 },
   audioPanel: {
     borderBottomWidth: 1,
-    borderBottomColor: '#8B857B',
-    backgroundColor: '#CDA03B',
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surfaceRaised,
     padding: 12,
     gap: 10,
   },
   consoleTitle: {
-    color: '#39210E',
+    color: colors.gold,
     fontSize: 12,
     fontWeight: '900',
     letterSpacing: 1,
@@ -1077,12 +1021,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: 'rgba(251,237,183,0.36)',
+    backgroundColor: 'rgba(0,0,0,0.18)',
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
-  audioLabel: { color: '#39210E', fontSize: 14, fontWeight: '800' },
+  audioLabel: { color: colors.text, fontSize: 14, fontWeight: '800' },
   controlsPanel: {
     backgroundColor: '#D8A12B',
     padding: 12,
@@ -1117,9 +1061,9 @@ const styles = StyleSheet.create({
   railConsole: {
     marginHorizontal: 8,
     borderWidth: 1,
-    borderColor: '#8B857B',
+    borderColor: colors.border,
     borderRadius: 10,
-    backgroundColor: '#D7D4CC',
+    backgroundColor: colors.surface,
     overflow: 'hidden',
   },
   railTabs: {
@@ -1127,49 +1071,49 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 10,
     paddingTop: 10,
-    backgroundColor: '#D7D4CC',
+    backgroundColor: colors.surface,
   },
   railTab: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderTopLeftRadius: 8,
     borderTopRightRadius: 8,
-    backgroundColor: '#C1BDB4',
-    color: '#504941',
+    backgroundColor: colors.surface,
+    color: colors.textMuted,
     fontSize: 11,
     fontWeight: '800',
   },
   railTabActive: {
-    backgroundColor: '#F3E5B7',
-    color: '#3B2C1B',
+    backgroundColor: colors.surfaceRaised,
+    color: colors.gold,
   },
   railGrid: {
     gap: 8,
     padding: 10,
-    backgroundColor: '#F0EEE8',
+    backgroundColor: colors.surfaceRaised,
   },
   railCard: {
     borderWidth: 1,
-    borderColor: '#C3BCAE',
+    borderColor: colors.border,
     borderRadius: 10,
-    backgroundColor: '#FBFAF6',
+    backgroundColor: colors.surface,
     padding: 10,
     gap: 4,
   },
   railCardLabel: {
-    color: '#8D6F3F',
+    color: colors.gold,
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 1,
     textTransform: 'uppercase',
   },
   railCardValue: {
-    color: '#352E27',
+    color: colors.text,
     fontSize: 15,
     fontWeight: '900',
   },
   railCardMeta: {
-    color: '#6E655C',
+    color: colors.textMuted,
     fontSize: 12,
     lineHeight: 16,
   },
@@ -1178,33 +1122,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#C6C7C9',
+    backgroundColor: colors.bg,
     borderTopWidth: 1,
-    borderTopColor: '#A39D92',
+    borderTopColor: colors.border,
     paddingVertical: 8,
     paddingHorizontal: 10,
   },
   ledgerText: {
-    color: '#49433C',
+    color: colors.textMuted,
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 0.8,
   },
   ledgerDivider: {
-    color: '#827B73',
+    color: colors.textFaint,
     fontSize: 11,
   },
   footerLinks: { flexDirection: 'row', gap: 10, marginHorizontal: 8 },
   linkButton: {
     flex: 1,
     borderRadius: 6,
-    backgroundColor: '#DDD7CA',
+    backgroundColor: colors.surface,
     alignItems: 'center',
     paddingVertical: 13,
     borderWidth: 1,
-    borderColor: '#8B857B',
+    borderColor: colors.border,
   },
-  linkButtonText: { color: '#2F2A25', fontWeight: '900' },
+  linkButtonText: { color: colors.text, fontWeight: '900' },
   primaryButton: {
     backgroundColor: '#F1C46E',
     borderRadius: 16,
@@ -1219,15 +1163,26 @@ const styles = StyleSheet.create({
 const feltStyles = StyleSheet.create({
   felt: {
     position: 'relative',
-    backgroundColor: '#0CB54E',
+    backgroundColor: colors.felt,
     borderWidth: 11,
-    borderColor: '#5D341B',
+    borderColor: '#2E1B10',
     alignSelf: 'center',
     shadowColor: '#000',
-    shadowOpacity: 0.5,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.55,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 12 },
     elevation: 8,
+  },
+  // Thin brass line right at the seam between the wood rail and the cloth — the single
+  // most legible "real table, not an app skin" cue.
+  feltPinstripe: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderWidth: 2,
+    borderColor: 'rgba(225,184,101,0.55)',
   },
   feltRim: {
     position: 'absolute',
@@ -1236,11 +1191,11 @@ const feltStyles = StyleSheet.create({
     right: 8,
     bottom: 8,
     borderWidth: 2.5,
-    borderColor: 'rgba(60,80,28,0.28)',
+    borderColor: 'rgba(6,28,18,0.4)',
   },
   feltGlow: {
     position: 'absolute',
-    backgroundColor: 'rgba(255,255,170,0.12)',
+    backgroundColor: 'rgba(255,244,210,0.07)',
   },
   feltInner: {
     position: 'absolute',
@@ -1249,12 +1204,12 @@ const feltStyles = StyleSheet.create({
     right: '7%',
     bottom: '11%',
     borderWidth: 3,
-    borderColor: 'rgba(29,124,48,0.24)',
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderColor: 'rgba(9,40,26,0.3)',
+    backgroundColor: 'rgba(255,255,255,0.015)',
   },
   brandMark: { position: 'absolute', alignItems: 'center', gap: 3 },
-  brandText: { color: 'rgba(20,84,38,0.16)', fontSize: 56, fontWeight: '900', letterSpacing: 6 },
-  brandSub: { color: 'rgba(21,80,34,0.18)', fontSize: 11, fontWeight: '900', letterSpacing: 2 },
+  brandText: { color: 'rgba(255,255,255,0.055)', fontSize: 56, fontWeight: '900', letterSpacing: 6 },
+  brandSub: { color: 'rgba(255,255,255,0.06)', fontSize: 11, fontWeight: '900', letterSpacing: 2 },
   dealer: { position: 'absolute', width: 68, alignItems: 'center', gap: 3 },
   dealerStageAnchor: { position: 'absolute', overflow: 'hidden' },
   board: { position: 'absolute', alignItems: 'center', gap: 8 },
@@ -1270,7 +1225,7 @@ const feltStyles = StyleSheet.create({
   potText: { color: '#FBE7A8', fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
   boardCards: { flexDirection: 'row', gap: 6 },
   streetText: {
-    color: 'rgba(38,60,24,0.85)',
+    color: 'rgba(255,244,231,0.6)',
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 2,
@@ -1336,72 +1291,85 @@ const seatStyles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 2,
   },
-  heroPod: {},
-  turnPod: {},
-  emptyPod: {},
-  openPod: {},
   pressedPod: { opacity: 0.6, transform: [{ scale: 0.96 }] },
   cardsRow: { flexDirection: 'row', gap: 4, height: 22, marginBottom: -2, zIndex: 2 },
-  holeBack: { width: 16, height: 22, borderRadius: 2, backgroundColor: '#C61F2F', borderWidth: 1, borderColor: '#F6F0E4' },
+  holeBack: { width: 16, height: 22, borderRadius: 3, backgroundColor: '#17345B', borderWidth: 1, borderColor: '#4C86D3' },
   holeBackTiltLeft: { transform: [{ rotate: '-18deg' }] },
   holeBackTiltRight: { transform: [{ rotate: '16deg' }] },
-  chairBack: {
-    width: 74,
-    minHeight: 76,
-    borderRadius: 38,
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
-    backgroundColor: '#731B1D',
-    borderWidth: 3,
-    borderColor: '#B78A3A',
+  // Flat nameplate rather than an illustrated armchair — reads as a real table's seat
+  // marker instead of a cartoon chair icon.
+  plate: {
+    width: 72,
+    minHeight: 74,
+    borderRadius: 14,
+    backgroundColor: 'rgba(18,7,10,0.78)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(241,196,110,0.32)',
     alignItems: 'center',
     justifyContent: 'flex-start',
     paddingTop: 8,
-    paddingHorizontal: 5,
-    gap: 4,
+    paddingBottom: 6,
+    paddingHorizontal: 4,
+    gap: 3,
     shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 3 },
   },
-  heroChairBack: {
-    borderColor: '#F1C46E',
-    backgroundColor: '#882023',
-  },
-  emptyChairBack: {
-    backgroundColor: 'rgba(84, 30, 31, 0.7)',
-    borderStyle: 'dashed',
-    borderColor: '#B78A3A',
-  },
-  openChairBack: {
-    backgroundColor: '#6D3A1F',
-    borderStyle: 'solid',
-  },
-  chairSeat: {
-    width: 54,
-    height: 18,
-    marginTop: -4,
-    borderRadius: 10,
-    backgroundColor: '#C92B2E',
+  heroPlate: {
     borderWidth: 2,
-    borderColor: '#B78A3A',
+    borderColor: colors.gold,
+    backgroundColor: 'rgba(42,17,24,0.86)',
   },
-  openChairSeat: {
-    backgroundColor: '#9E6232',
+  turnPlate: {
+    borderWidth: 2,
+    borderColor: colors.gold,
+    shadowColor: colors.gold,
+    shadowOpacity: 0.45,
+    shadowRadius: 8,
   },
-  avatar: {
+  emptyPlate: {
+    backgroundColor: 'rgba(18,7,10,0.5)',
+    borderStyle: 'dashed',
+    borderColor: 'rgba(241,196,110,0.28)',
+  },
+  invitingPlate: {
+    borderStyle: 'solid',
+    borderColor: colors.gold,
+    backgroundColor: 'rgba(42,24,10,0.55)',
+  },
+  // Three concentric rings: brass (unified across every seat), the character's own
+  // accent (keeps a sliver of persona identity), then the aura fill behind the emoji.
+  avatarRing: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 2,
+    borderColor: colors.gold,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarAccentRing: {
     width: 28,
     height: 28,
     borderRadius: 14,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
   },
-  avatarEmoji: { fontSize: 15, lineHeight: 17 },
+  avatar: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarEmoji: { fontSize: 12, lineHeight: 14 },
   trustShield: {
     position: 'absolute',
     right: -3,
-    bottom: -4,
+    bottom: -3,
     width: 14,
     height: 14,
     borderRadius: 7,
@@ -1414,37 +1382,45 @@ const seatStyles = StyleSheet.create({
   trustShieldText: { color: '#F9E8BD', fontSize: 7, fontWeight: '900' },
   dealerButton: {
     position: 'absolute',
-    right: 2,
-    top: 8,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#F5F8FF',
+    right: -5,
+    top: -5,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#F3E9D2',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#0B1220',
+    borderColor: '#2A1118',
   },
-  dealerButtonText: { color: '#0B1220', fontSize: 10, fontWeight: '900' },
+  dealerButtonText: { color: '#2A1118', fontSize: 9, fontWeight: '900' },
   pulseRing: { position: 'absolute', top: 8, left: 1, right: 1, bottom: 16, borderRadius: 36, borderWidth: 2, borderColor: '#F1C46E' },
-  nameTag: { borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1, backgroundColor: 'rgba(78,11,14,0.65)', borderWidth: 1, marginTop: -1 },
+  nameTag: {
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    borderWidth: 1,
+    marginTop: 2,
+  },
   name: { color: '#FFF4E7', fontSize: 10, fontWeight: '800', maxWidth: 64, textAlign: 'center' },
   stackRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: -1 },
   stack: { color: '#F8E0A0', fontSize: 10, fontWeight: '900' },
-  status: { color: '#4E2B0D', fontSize: 9, fontWeight: '900', marginTop: 1 },
-  statusActive: { color: '#7A2C00' },
+  status: { color: 'rgba(255,244,231,0.55)', fontSize: 9, fontWeight: '800', marginTop: 1 },
+  statusActive: { color: colors.gold },
   emptyAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E6CC8B',
+    borderColor: colors.goldDim,
     borderStyle: 'dashed',
   },
-  emptyPlus: { color: '#F5E0AA', fontSize: 18, fontWeight: '900' },
-  emptyLabel: { color: '#F6E6C2', fontSize: 9, fontWeight: '800', textAlign: 'center' },
-  openAvatar: { borderColor: '#4ADE80', borderStyle: 'solid' },
-  openLabel: { color: '#F5E0AA', fontWeight: '900' },
+  emptyPlus: { color: colors.goldDim, fontSize: 16, fontWeight: '900' },
+  emptyLabel: { color: colors.textFaint, fontSize: 9, fontWeight: '800', textAlign: 'center' },
+  invitingAvatar: { borderColor: colors.gold, borderStyle: 'solid' },
+  invitingPlus: { color: colors.gold },
+  invitingLabel: { color: colors.gold, fontWeight: '900' },
 });
