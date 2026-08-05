@@ -11,6 +11,7 @@
     ],
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -23,6 +24,7 @@
       "supportsTablet": false,
       "requireFullScreen": true,
       "usesAppleSignIn": false,
+      "icon": "./assets/icon.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": []
@@ -30,14 +32,30 @@
     },
     "android": {
       "package": "io.truestack.poker",
-      "versionCode": 1
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundImage": "./assets/adaptive-icon-background.png"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
     },
     "experiments": {
       "typedRoutes": true
     },
     "plugins": [
       "expo-asset",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "backgroundColor": "#17090D"
+        }
+      ]
     ]
   }
 }

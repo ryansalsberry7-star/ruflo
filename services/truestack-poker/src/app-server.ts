@@ -313,6 +313,27 @@ async function routeRequest(
     return;
   }
 
+  if (method === 'DELETE' && pathname === '/api/auth/account') {
+    const actor = readAuthenticatedUser(req, services);
+    if (!actor) {
+      sendJson(res, 401, { error: 'Authentication required.' });
+      return;
+    }
+
+    const body = await readJsonBody(req);
+    const password = typeof body.password === 'string' ? body.password : '';
+    if (!services.users.verifyPassword(actor.id, password)) {
+      sendJson(res, 401, { error: 'Incorrect password.' });
+      return;
+    }
+
+    services.sessions.revokeAllForUser(actor.id);
+    services.users.deleteUser(actor.id);
+
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
   if (method === 'GET' && pathname === '/api/lobby/cash-games') {
     const minBlind = requestUrl.searchParams.get('minBlind');
     const maxBlind = requestUrl.searchParams.get('maxBlind');

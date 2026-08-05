@@ -1,3 +1,4 @@
+import { Link } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { VerifiedHumanBadge } from './components/VerifiedHumanBadge';
@@ -242,6 +243,25 @@ export default function ProfileScreen() {
         ))}
         {profile.tournamentHistory.length === 0 ? <Text style={styles.rowText}>• No tournament results yet.</Text> : null}
       </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Account</Text>
+        <Link href="/privacy" asChild>
+          <Pressable>
+            <Text style={styles.linkText}>Privacy</Text>
+          </Pressable>
+        </Link>
+        <Link href="/terms" asChild>
+          <Pressable>
+            <Text style={styles.linkText}>Terms</Text>
+          </Pressable>
+        </Link>
+        <Link href="/delete-account" asChild>
+          <Pressable>
+            <Text style={styles.dangerLinkText}>Delete account</Text>
+          </Pressable>
+        </Link>
+      </View>
     </ScrollView>
   );
 }
@@ -326,6 +346,8 @@ const styles = StyleSheet.create({
   optionTitle: { color: '#F6E7C8', fontSize: 11, fontWeight: '800', lineHeight: 16 },
   optionDescription: { color: '#FFF1E2', fontSize: 11, lineHeight: 16 },
   saveState: { color: '#F1C46E', fontSize: 12, lineHeight: 18 },
+  linkText: { color: '#F0DED0', fontSize: 14, fontWeight: '700', paddingVertical: 8 },
+  dangerLinkText: { color: '#E48A8A', fontSize: 14, fontWeight: '700', paddingVertical: 8 },
   tag: {
     color: '#FFF4E7',
     backgroundColor: '#3C1D26',

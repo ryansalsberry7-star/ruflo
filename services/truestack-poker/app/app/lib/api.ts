@@ -52,4 +52,12 @@ export function postJson<T>(path: string, body: unknown, init?: RequestInit): Pr
   });
 }
 
+export function deleteJson<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {
+  return request<T>(path, {
+    ...init,
+    method: 'DELETE',
+    body: JSON.stringify(body),
+  });
+}
+
 export { API_BASE_URL, resolveWebSocketBaseUrl };

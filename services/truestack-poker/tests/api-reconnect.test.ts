@@ -348,6 +348,60 @@ test('restores stored auth token sessions and revokes them on logout', async () 
   }
 });
 
+test('deletes an account, revokes its sessions, and frees the username', async () => {
+  const services = buildDefaultServices();
+  const app = createPlatformServer(services);
+  const port = await app.start(0);
+
+  try {
+    const registerRes = await fetch(`http://127.0.0.1:${port}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'Temporal', password: 'temporal-secure-pass' }),
+    });
+    const registerPayload = await registerRes.json();
+    assert.equal(registerRes.status, 200);
+
+    const wrongPasswordRes = await fetch(`http://127.0.0.1:${port}/api/auth/account`, {
+      method: 'DELETE',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${registerPayload.authToken}`,
+      },
+      body: JSON.stringify({ password: 'not-the-password' }),
+    });
+    assert.equal(wrongPasswordRes.status, 401);
+
+    const deleteRes = await fetch(`http://127.0.0.1:${port}/api/auth/account`, {
+      method: 'DELETE',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${registerPayload.authToken}`,
+      },
+      body: JSON.stringify({ password: 'temporal-secure-pass' }),
+    });
+    const deletePayload = await deleteRes.json();
+    assert.equal(deleteRes.status, 200);
+    assert.equal(deletePayload.ok, true);
+
+    const sessionRes = await fetch(`http://127.0.0.1:${port}/api/auth/session`, {
+      headers: { authorization: `Bearer ${registerPayload.authToken}` },
+    });
+    const sessionPayload = await sessionRes.json();
+    assert.equal(sessionPayload.session, null);
+    assert.equal(sessionPayload.source, 'anonymous');
+
+    const reRegisterRes = await fetch(`http://127.0.0.1:${port}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'Temporal', password: 'another-secure-pass' }),
+    });
+    assert.equal(reRegisterRes.status, 200);
+  } finally {
+    await app.stop();
+  }
+});
+
 test('serves high hand leaderboards, history, premium benefits, and shareable highlights', async () => {
   const services = buildDefaultServices();
   const app = createPlatformServer(services);

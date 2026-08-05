@@ -59,6 +59,12 @@ export class UserService {
     return user;
   }
 
+  deleteUser(id: string): void {
+    this.users.delete(id);
+    this.passwordHashes.delete(id);
+    this.persistUsers();
+  }
+
   hasUser(id: string): boolean {
     return this.users.has(id);
   }

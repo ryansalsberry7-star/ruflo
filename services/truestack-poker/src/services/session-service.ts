@@ -101,6 +101,13 @@ export class SessionService {
     this.persistAuthSessions();
   }
 
+  revokeAllForUser(userId: string): void {
+    for (const [token, session] of this.authSessions.entries()) {
+      if (session.userId === userId) this.authSessions.delete(token);
+    }
+    this.persistAuthSessions();
+  }
+
   private loadPersistedAuthSessions(): void {
     const storagePath = this.getStoragePath();
     if (!storagePath) return;
