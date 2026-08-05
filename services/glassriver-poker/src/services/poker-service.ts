@@ -1,11 +1,13 @@
 import {
   applyAction,
+  compareEvaluatedHands,
   createTable,
   dealFlop,
   dealRiver,
   dealTurn,
-  resolveShowdown,
+  evaluateBestHand,
   type ActionType,
+  type Card,
   type PlayerAction,
   type TableState,
 } from '../poker-engine.js';
@@ -231,12 +233,12 @@ export class PokerService {
 
   settleHand(tableId: string): SettledHand {
     const table = this.getTable(tableId);
-    const showdown = resolveShowdown(table);
+    const hand = this.activeDealerHands.get(tableId) ?? this.startDealerHandForTable(tableId);
+    const showdown = this.resolveDealerShowdown(table, hand);
     const winners = showdown.winnerIds.length > 0 ? showdown.winnerIds : table.players.map((entry) => entry.id);
     const payoutEach = winners.length > 0 ? Number((showdown.pot / winners.length).toFixed(2)) : 0;
     const payouts: SettledPayout[] = winners.map((playerId) => ({ playerId, amount: payoutEach }));
 
-    const hand = this.activeDealerHands.get(tableId) ?? this.startDealerHandForTable(tableId);
     const verification = this.dealer.completeHand(hand, {
       pot: showdown.pot,
       handRank: showdown.handRank,
@@ -427,5 +429,48 @@ export class PokerService {
     };
 
     this.tables.set(tableId, next);
+  }
+
+  private resolveDealerShowdown(table: TableState, hand: DealerHandState): { winnerIds: string[]; pot: number; handRank: string } {
+    const activePlayers = table.players.filter((player) => !player.folded);
+    if (activePlayers.length <= 1) {
+      const winner = activePlayers[0]?.id ?? table.players[0]?.id;
+      const cards = winner ? this.cardsForPlayer(hand, winner) : [];
+      return {
+        winnerIds: winner ? [winner] : [],
+        pot: table.pot,
+        handRank: evaluateBestHand(cards).handRank,
+      };
+    }
+
+    let bestHand = null as ReturnType<typeof evaluateBestHand> | null;
+    let winners: string[] = [];
+
+    for (const player of activePlayers) {
+      const evaluated = evaluateBestHand(this.cardsForPlayer(hand, player.id));
+      if (!bestHand) {
+        bestHand = evaluated;
+        winners = [player.id];
+        continue;
+      }
+
+      const comparison = compareEvaluatedHands(evaluated, bestHand);
+      if (comparison > 0) {
+        bestHand = evaluated;
+        winners = [player.id];
+      } else if (comparison === 0) {
+        winners.push(player.id);
+      }
+    }
+
+    return {
+      winnerIds: winners,
+      pot: table.pot,
+      handRank: bestHand?.handRank ?? 'high card',
+    };
+  }
+
+  private cardsForPlayer(hand: DealerHandState, playerId: string): Card[] {
+    return [...(hand.holeCardsByPlayer[playerId] ?? []), ...hand.communityCards];
   }
 }

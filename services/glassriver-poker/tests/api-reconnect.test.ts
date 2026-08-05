@@ -303,6 +303,43 @@ test('serves high hand leaderboards, history, premium benefits, and shareable hi
   const port = await app.start(0);
 
   try {
+    const dealerHand = (services.poker as unknown as {
+      activeDealerHands: Map<string, {
+        communityCards: Array<{ suit: 'clubs' | 'diamonds' | 'hearts' | 'spades'; rank: '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | 'T' | 'J' | 'Q' | 'K' | 'A'; id: string }>;
+        holeCardsByPlayer: Record<string, Array<{ suit: 'clubs' | 'diamonds' | 'hearts' | 'spades'; rank: '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | 'T' | 'J' | 'Q' | 'K' | 'A'; id: string }>>;
+      }>;
+    }).activeDealerHands.get('cash-aurora');
+
+    assert.ok(dealerHand);
+    if (!dealerHand) return;
+
+    dealerHand.holeCardsByPlayer = {
+      p1: [
+        { suit: 'hearts', rank: 'A', id: 'Ah' },
+        { suit: 'hearts', rank: 'K', id: 'Kh' },
+      ],
+      p2: [
+        { suit: 'clubs', rank: '3', id: '3c' },
+        { suit: 'diamonds', rank: '3', id: '3d' },
+      ],
+      p3: [
+        { suit: 'spades', rank: '4', id: '4s' },
+        { suit: 'clubs', rank: '4', id: '4c' },
+      ],
+    };
+    dealerHand.communityCards = [
+      { suit: 'hearts', rank: 'Q', id: 'Qh' },
+      { suit: 'hearts', rank: 'J', id: 'Jh' },
+      { suit: 'hearts', rank: 'T', id: 'Th' },
+      { suit: 'clubs', rank: '2', id: '2c' },
+      { suit: 'spades', rank: '9', id: '9s' },
+    ];
+
+    services.poker.applyPlayerAction('cash-aurora', 'p1', 'bet', 25);
+    services.poker.applyPlayerAction('cash-aurora', 'p2', 'call', 25);
+    services.poker.applyPlayerAction('cash-aurora', 'p3', 'call', 25);
+    const settled = services.poker.settleHand('cash-aurora');
+
     const leaderboardRes = await fetch(`http://127.0.0.1:${port}/api/high-hands/leaderboards`);
     const leaderboardPayload = await leaderboardRes.json();
     assert.equal(leaderboardRes.status, 200);
@@ -321,7 +358,7 @@ test('serves high hand leaderboards, history, premium benefits, and shareable hi
     assert.equal(premiumPayload.premium.proMember, true);
     assert.ok(Array.isArray(premiumPayload.premium.dailyChallenges));
 
-    const highlightRes = await fetch(`http://127.0.0.1:${port}/api/high-hands/highlights/highlight-rf-001`);
+    const highlightRes = await fetch(`http://127.0.0.1:${port}/api/high-hands/highlights/${settled.handId}`);
     const highlightPayload = await highlightRes.json();
     assert.equal(highlightRes.status, 200);
     assert.equal(highlightPayload.highlight.handName, 'Royal Flush');
