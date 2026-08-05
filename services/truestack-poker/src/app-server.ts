@@ -8,6 +8,7 @@ import { CoachService } from './services/coach-service.js';
 import { ComplianceService } from './services/compliance-service.js';
 import { CommunityService } from './services/community-service.js';
 import { FundingService } from './services/funding-service.js';
+import type { GameHostProvider } from './services/game-host-provider.js';
 import { HighHandService } from './services/high-hand-service.js';
 import { PaymentService } from './services/payment-service.js';
 import { PokerService } from './services/poker-service.js';
@@ -19,7 +20,7 @@ import { WalletService } from './services/wallet-service.js';
 import { hashPassword, isPasswordStrongEnough } from './services/password-service.js';
 
 export interface PlatformServices {
-  poker: PokerService;
+  poker: GameHostProvider;
   wallet: WalletService;
   payment: PaymentService;
   compliance: ComplianceService;

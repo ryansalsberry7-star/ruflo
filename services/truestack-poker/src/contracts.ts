@@ -21,10 +21,16 @@ export interface TournamentListing {
   prizeStructure: string;
 }
 
+/**
+ * Shape of a host's rake/fee disclosure. Field names stay the "zero rake" wording
+ * because that's TRUE STACK's own house policy today, but the numeric fields are
+ * plain `number` (not literal `0`) so a licensed white-label GameHostProvider that
+ * does take a cut can still implement this contract truthfully.
+ */
 export interface ZeroRakePolicy {
-  rakePercent: 0;
-  houseEdgePercent: 0;
-  potFeePercent: 0;
+  rakePercent: number;
+  houseEdgePercent: number;
+  potFeePercent: number;
   note: string;
 }
 

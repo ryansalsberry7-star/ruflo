@@ -17,6 +17,7 @@ import {
 import type { StakeLevel, TournamentListing, ZeroRakePolicy } from '../contracts.js';
 import { STAKE_LEVELS, TOURNAMENT_LISTINGS, ZERO_RAKE_POLICY } from '../contracts.js';
 import { DealerService, type DealerHandState, type HandVerificationRecord } from './dealer-service.js';
+import type { GameHostProvider } from './game-host-provider.js';
 import { HighHandService } from './high-hand-service.js';
 import type { WalletService } from './wallet-service.js';
 
@@ -61,7 +62,8 @@ export interface PokerServiceOptions {
   autoProgress?: boolean;
 }
 
-export class PokerService extends EventEmitter {
+/** Default GameHostProvider: self-dealt, in-process, zero-rake. See game-host-provider.ts. */
+export class PokerService extends EventEmitter implements GameHostProvider {
   private readonly tables = new Map<string, TableState>();
   private readonly handHistory = new Map<string, SettledHand[]>();
   private readonly tablePrivacy = new Map<string, boolean>();

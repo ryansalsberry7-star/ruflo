@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildDefaultServices, createPlatformServer, SEED_USER_PASSWORD } from '../src/app-server.js';
+import type { PokerService } from '../src/services/poker-service.js';
 
 test('exposes lobby endpoints and health status', async () => {
   const services = buildDefaultServices();
@@ -150,12 +151,15 @@ test('serves fair-play verification and replay payloads for completed hands', as
   const port = await app.start(0);
 
   try {
+    // The dealer-brain hooks below (advanceStreet/settleHand) are Local-provider-specific
+    // test scaffolding, not part of the GameHostProvider contract, hence the cast.
+    const localPoker = services.poker as PokerService;
     services.poker.applyPlayerAction('cash-aurora', 'p1', 'raise', 10);
     services.poker.applyPlayerAction('cash-aurora', 'p2', 'call', 10);
-    services.poker.advanceStreet('cash-aurora');
-    services.poker.advanceStreet('cash-aurora');
-    services.poker.advanceStreet('cash-aurora');
-    const settled = services.poker.settleHand('cash-aurora');
+    localPoker.advanceStreet('cash-aurora');
+    localPoker.advanceStreet('cash-aurora');
+    localPoker.advanceStreet('cash-aurora');
+    const settled = localPoker.settleHand('cash-aurora');
 
     const verificationRes = await fetch(`http://127.0.0.1:${port}/api/hands/${settled.handId}/verification`);
     const verificationPayload = await verificationRes.json();
@@ -221,7 +225,7 @@ test('supports social clubs, ai hand analysis, and find-my-game matchmaking', as
 
     services.poker.applyPlayerAction('cash-aurora', 'p1', 'raise', 15);
     services.poker.applyPlayerAction('cash-aurora', 'p2', 'call', 15);
-    const settled = services.poker.settleHand('cash-aurora');
+    const settled = (services.poker as PokerService).settleHand('cash-aurora');
 
     const clubRes = await fetch(`http://127.0.0.1:${port}/api/social/clubs`, {
       method: 'POST',
@@ -454,7 +458,7 @@ test('serves high hand leaderboards, history, premium benefits, and shareable hi
       { suit: 'spades', rank: '9', id: '9s' },
     ];
 
-    const settled = services.poker.settleHand('cash-aurora');
+    const settled = (services.poker as PokerService).settleHand('cash-aurora');
 
     const leaderboardRes = await fetch(`http://127.0.0.1:${port}/api/high-hands/leaderboards`);
     const leaderboardPayload = await leaderboardRes.json();

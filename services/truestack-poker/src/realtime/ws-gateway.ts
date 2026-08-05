@@ -2,7 +2,8 @@ import type { IncomingMessage } from 'node:http';
 import type { Server as HttpServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { actionEnvelopeSchema } from '../contracts.js';
-import { PokerService, type SettledHand } from '../services/poker-service.js';
+import type { GameHostProvider } from '../services/game-host-provider.js';
+import type { SettledHand } from '../services/poker-service.js';
 import { WalletService } from '../services/wallet-service.js';
 import { AnalyticsService } from '../services/analytics-service.js';
 import { CoachService } from '../services/coach-service.js';
@@ -24,7 +25,7 @@ interface PendingDisconnect {
 }
 
 interface GatewayServices {
-  poker: PokerService;
+  poker: GameHostProvider;
   wallet: WalletService;
   analytics: AnalyticsService;
   sessions: SessionService;
