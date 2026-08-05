@@ -65,6 +65,20 @@ function initials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+// Fun animal characters give every seat a recognisable, playful identity.
+const CHARACTERS = [
+  '\uD83E\uDD8A', '\uD83D\uDC3C', '\uD83D\uDC2F', '\uD83E\uDD81',
+  '\uD83D\uDC35', '\uD83D\uDC28', '\uD83D\uDC38', '\uD83E\uDD89',
+  '\uD83D\uDC19', '\uD83D\uDC37', '\uD83D\uDC32', '\uD83E\uDD85',
+  '\uD83D\uDC3A', '\uD83E\uDD9D', '\uD83D\uDC2E', '\uD83D\uDC30',
+];
+
+function characterFor(name: string): string {
+  let hash = 7;
+  for (let i = 0; i < name.length; i += 1) hash = (hash * 131 + name.charCodeAt(i)) >>> 0;
+  return CHARACTERS[hash % CHARACTERS.length];
+}
+
 function PlayingCard({ id, faceDown }: { id?: string; faceDown?: boolean }): JSX.Element {
   if (faceDown || !id) {
     return (
@@ -98,7 +112,7 @@ function SeatPod({ player, isHero, isTurn }: SeatPodProps): JSX.Element {
         <View style={seatStyles.emptyAvatar}>
           <Text style={seatStyles.emptyPlus}>+</Text>
         </View>
-        <Text style={seatStyles.emptyLabel}>{isHero ? 'Taking seat\u2026' : 'Open seat'}</Text>
+        <Text style={seatStyles.emptyLabel}>{isHero ? 'Taking seat\u2026' : 'Open'}</Text>
       </View>
     );
   }
@@ -120,7 +134,7 @@ function SeatPod({ player, isHero, isTurn }: SeatPodProps): JSX.Element {
         ) : null}
       </View>
       <View style={[seatStyles.avatar, { backgroundColor: avatarColor(player.name) }]}>
-        <Text style={seatStyles.avatarText}>{initials(player.name)}</Text>
+        <Text style={seatStyles.avatarEmoji}>{characterFor(player.name)}</Text>
         {player.isDealer ? (
           <View style={seatStyles.dealerButton}>
             <Text style={seatStyles.dealerButtonText}>D</Text>
@@ -335,17 +349,22 @@ export default function TableScreen() {
       <View style={styles.headerRow}>
         <Text style={styles.eyebrow}>PLAY-MONEY BETA • AUTHENTICATED TABLE</Text>
         <Text style={styles.title}>Aurora Table • $0.05/$0.10</Text>
-        <Text style={styles.subtitle}>Server-authoritative gameplay preview for App Store review. No real-money play is enabled in this build.</Text>
+        <Text style={styles.subtitle}>Play-money preview • server-dealt • no real-money wagering in this build.</Text>
       </View>
 
-      <View style={styles.statusCard}>
-        <Text style={styles.statusText}>Connection: {connected ? 'Live' : 'Connecting'}</Text>
-        <Text style={styles.statusText}>You: {user.username}</Text>
-        <Text style={styles.statusText}>Current street: {table?.currentStreet ?? 'waiting'}</Text>
-        <Text style={styles.statusText}>Turn: {table?.currentTurn ?? 'pending'}</Text>
-        {countdown !== null ? <Text style={styles.timerText}>Action timer: {countdown}s</Text> : null}
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      <View style={styles.tableStrip}>
+        <View style={[styles.liveDot, connected && styles.liveDotOn]} />
+        <Text style={styles.stripText}>{connected ? 'LIVE' : 'CONNECTING'}</Text>
+        <Text style={styles.stripDivider}>{'\u2022'}</Text>
+        <Text style={styles.stripText}>{(table?.currentStreet ?? 'WAITING').toUpperCase()}</Text>
+        {countdown !== null ? (
+          <>
+            <Text style={styles.stripDivider}>{'\u2022'}</Text>
+            <Text style={styles.stripTimer}>{countdown}s</Text>
+          </>
+        ) : null}
       </View>
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
       <View style={styles.feltWrap}>
         <View
@@ -355,10 +374,31 @@ export default function TableScreen() {
           ]}
         >
           <View style={[feltStyles.feltRim, { borderRadius: tableHeight / 2 }]} />
+          <View
+            pointerEvents="none"
+            style={[
+              feltStyles.feltGlow,
+              {
+                width: tableWidth * 0.72,
+                height: tableHeight * 0.58,
+                borderRadius: tableHeight,
+                left: tableWidth * 0.14,
+                top: tableHeight * 0.18,
+              },
+            ]}
+          />
+          <View
+            pointerEvents="none"
+            style={[feltStyles.feltInner, { borderRadius: tableHeight / 2 }]}
+          />
+          <View pointerEvents="none" style={[feltStyles.brandMark, { top: tableHeight * 0.52, width: tableWidth }]}>
+            <Text style={feltStyles.brandText}>TRUE STACK</Text>
+            <Text style={feltStyles.brandSub}>{'\u2660  P O K E R  \u2660'}</Text>
+          </View>
 
           <View style={[feltStyles.dealer, { left: tableWidth * 0.5 - 34, top: tableHeight * 0.26 - 26 }]}>
             <View style={feltStyles.dealerAvatar}>
-              <Text style={feltStyles.dealerEmoji}>{'\uD83C\uDFA9'}</Text>
+              <Text style={feltStyles.dealerEmoji}>{'\uD83E\uDD35'}</Text>
             </View>
             <Text style={feltStyles.dealerLabel}>Dealer</Text>
           </View>
@@ -470,8 +510,26 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   statusText: { color: '#D9E5FF', fontSize: 13 },
-  errorText: { color: '#FFB4B4', fontSize: 12, lineHeight: 18 },
+  errorText: { color: '#FFB4B4', fontSize: 12, lineHeight: 18, textAlign: 'center' },
   timerText: { color: '#7ED3FF', fontSize: 14, fontWeight: '700' },
+  tableStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#0F1730',
+    borderColor: '#243454',
+    borderWidth: 1,
+    borderRadius: 999,
+    alignSelf: 'center',
+  },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4A5A7A' },
+  liveDotOn: { backgroundColor: '#4ADE80', shadowColor: '#4ADE80', shadowOpacity: 0.9, shadowRadius: 6 },
+  stripText: { color: '#D9E5FF', fontSize: 12, fontWeight: '700', letterSpacing: 0.8 },
+  stripDivider: { color: '#3F5170', fontSize: 12 },
+  stripTimer: { color: '#7ED3FF', fontSize: 12, fontWeight: '800' },
   tableCard: {
     backgroundColor: '#0A1226',
     borderRadius: 24,
@@ -584,8 +642,25 @@ const feltStyles = StyleSheet.create({
     right: 8,
     bottom: 8,
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.14)',
+    borderColor: 'rgba(244,228,170,0.22)',
   },
+  feltGlow: {
+    position: 'absolute',
+    backgroundColor: 'rgba(120,255,190,0.10)',
+  },
+  feltInner: {
+    position: 'absolute',
+    top: '11%',
+    left: '7%',
+    right: '7%',
+    bottom: '11%',
+    borderWidth: 2,
+    borderColor: 'rgba(244,228,170,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.035)',
+  },
+  brandMark: { position: 'absolute', alignItems: 'center', gap: 3 },
+  brandText: { color: 'rgba(255,255,255,0.10)', fontSize: 26, fontWeight: '900', letterSpacing: 5 },
+  brandSub: { color: 'rgba(255,255,255,0.09)', fontSize: 10, fontWeight: '800', letterSpacing: 2 },
   dealer: { position: 'absolute', width: 68, alignItems: 'center', gap: 3 },
   dealerAvatar: {
     width: 46,
@@ -624,7 +699,7 @@ const feltStyles = StyleSheet.create({
     letterSpacing: 2,
   },
   seatAnchor: { position: 'absolute', width: 80, alignItems: 'center' },
-  tableCaption: { color: '#8FA6CC', fontSize: 12, textAlign: 'center' },
+  tableCaption: { color: '#8FA6CC', fontSize: 12, textAlign: 'center', marginTop: 30 },
 });
 
 const cardStyles = StyleSheet.create({
@@ -668,15 +743,16 @@ const seatStyles = StyleSheet.create({
   emptyPod: { borderStyle: 'dashed', borderColor: '#3C4E70', backgroundColor: 'rgba(8,16,32,0.5)' },
   cardsRow: { flexDirection: 'row', gap: 2, height: 20, marginBottom: 2 },
   avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: 'rgba(255,255,255,0.35)',
   },
   avatarText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
+  avatarEmoji: { fontSize: 22, lineHeight: 26 },
   dealerButton: {
     position: 'absolute',
     right: -6,
