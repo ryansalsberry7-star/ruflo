@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "GlassRiver Poker",
+    "slug": "glassriver-poker",
+    "scheme": "glassriver",
+    "platforms": ["ios", "android", "web"],
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark"
+  }
+}
