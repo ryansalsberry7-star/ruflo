@@ -18,7 +18,7 @@ interface HandAnalysis {
 const TABLE_ID = 'cash-aurora';
 
 export default function HandHistoryScreen() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, authToken, loading: authLoading } = useAuth();
   const [hands, setHands] = useState<SettledHand[]>([]);
   const [analysisByHand, setAnalysisByHand] = useState<Record<string, HandAnalysis>>({});
   const [loading, setLoading] = useState(true);
@@ -48,7 +48,7 @@ export default function HandHistoryScreen() {
   }, []);
 
   async function analyzeHand(handId: string): Promise<void> {
-    if (!user?.userId) {
+    if (!user?.userId || !authToken) {
       setError('Sign in to analyze hands.');
       return;
     }
@@ -56,7 +56,10 @@ export default function HandHistoryScreen() {
     setAnalyzingHandId(handId);
     try {
       const response = await getJson<{ analysis: HandAnalysis }>(
-        `/api/coach/hands/${handId}/analyze?userId=${user.userId}&tableId=${TABLE_ID}`
+        `/api/coach/hands/${handId}/analyze?userId=${user.userId}&tableId=${TABLE_ID}`,
+        {
+          headers: { authorization: `Bearer ${authToken}` },
+        }
       );
       setAnalysisByHand((current) => ({ ...current, [handId]: response.analysis }));
     } catch (analysisError) {

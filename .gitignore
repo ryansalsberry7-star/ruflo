@@ -163,6 +163,9 @@ hive-mind-prompt-*.txt
 .claude-flow/data/
 .claude-flow/logs/
 
+# GlassRiver runtime auth sessions
+services/glassriver-poker/data/runtime/
+
 # Environment variables — block ALL .env variants except .example templates
 .env
 .env.*

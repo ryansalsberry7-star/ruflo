@@ -28,7 +28,7 @@ interface HighHandHighlight {
 }
 
 export default function HandVerificationScreen() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, authToken, loading: authLoading } = useAuth();
   const [history, setHistory] = useState<HighHandHistoryEntry[]>([]);
   const [highlight, setHighlight] = useState<HighHandHighlight | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,7 +36,7 @@ export default function HandVerificationScreen() {
 
   useEffect(() => {
     const activeUserId = user?.userId;
-    if (!activeUserId) {
+    if (!activeUserId || !authToken) {
       setLoading(false);
       return;
     }
@@ -45,7 +45,9 @@ export default function HandVerificationScreen() {
 
     async function load(): Promise<void> {
       try {
-        const historyResponse = await getJson<{ history: HighHandHistoryEntry[] }>(`/api/high-hands/history/${activeUserId}`);
+        const historyResponse = await getJson<{ history: HighHandHistoryEntry[] }>(`/api/high-hands/history/${activeUserId}`, {
+          headers: { authorization: `Bearer ${authToken}` },
+        });
         if (!active) return;
         setHistory(historyResponse.history);
 
@@ -70,7 +72,7 @@ export default function HandVerificationScreen() {
     return () => {
       active = false;
     };
-  }, [user?.userId]);
+  }, [authToken, user?.userId]);
 
   async function shareHighlight(): Promise<void> {
     if (!highlight) return;

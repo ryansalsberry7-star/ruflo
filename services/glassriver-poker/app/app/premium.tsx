@@ -28,7 +28,7 @@ interface PremiumOverview {
 }
 
 export default function PremiumScreen() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, authToken, loading: authLoading } = useAuth();
   const [premium, setPremium] = useState<PremiumOverview | null>(null);
   const [history, setHistory] = useState<HighHandEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,7 +36,7 @@ export default function PremiumScreen() {
 
   useEffect(() => {
     const activeUserId = user?.userId;
-    if (!activeUserId) {
+    if (!activeUserId || !authToken) {
       setLoading(false);
       return;
     }
@@ -46,8 +46,12 @@ export default function PremiumScreen() {
     async function load(): Promise<void> {
       try {
         const [premiumResponse, historyResponse] = await Promise.all([
-          getJson<{ premium: PremiumOverview }>(`/api/high-hands/premium/${activeUserId}`),
-          getJson<{ history: HighHandEntry[] }>(`/api/high-hands/history/${activeUserId}`),
+          getJson<{ premium: PremiumOverview }>(`/api/high-hands/premium/${activeUserId}`, {
+            headers: { authorization: `Bearer ${authToken}` },
+          }),
+          getJson<{ history: HighHandEntry[] }>(`/api/high-hands/history/${activeUserId}`, {
+            headers: { authorization: `Bearer ${authToken}` },
+          }),
         ]);
 
         if (!active) return;
@@ -65,7 +69,7 @@ export default function PremiumScreen() {
     return () => {
       active = false;
     };
-  }, [user?.userId]);
+  }, [authToken, user?.userId]);
 
   if (authLoading || loading) {
     return (

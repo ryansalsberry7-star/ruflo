@@ -23,7 +23,7 @@ interface SessionReview {
 }
 
 export default function StatisticsScreen() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, authToken, loading: authLoading } = useAuth();
   const [tracker, setTracker] = useState<SessionTracker | null>(null);
   const [review, setReview] = useState<SessionReview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,7 +31,7 @@ export default function StatisticsScreen() {
 
   useEffect(() => {
     const activeUserId = user?.userId;
-    if (!activeUserId) {
+    if (!activeUserId || !authToken) {
       setLoading(false);
       return;
     }
@@ -41,8 +41,12 @@ export default function StatisticsScreen() {
     async function load(): Promise<void> {
       try {
         const [trackerResponse, reviewResponse] = await Promise.all([
-          getJson<{ tracker: SessionTracker }>(`/api/session-tracker/${activeUserId}`),
-          getJson<{ review: SessionReview }>(`/api/coach/${activeUserId}/session-review`),
+          getJson<{ tracker: SessionTracker }>(`/api/session-tracker/${activeUserId}`, {
+            headers: { authorization: `Bearer ${authToken}` },
+          }),
+          getJson<{ review: SessionReview }>(`/api/coach/${activeUserId}/session-review`, {
+            headers: { authorization: `Bearer ${authToken}` },
+          }),
         ]);
 
         if (!active) return;
@@ -61,7 +65,7 @@ export default function StatisticsScreen() {
     return () => {
       active = false;
     };
-  }, [user?.userId]);
+  }, [authToken, user?.userId]);
 
   const totalNet = useMemo(() => {
     if (!tracker) return 0;

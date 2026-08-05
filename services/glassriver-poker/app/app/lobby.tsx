@@ -27,7 +27,7 @@ interface Recommendation {
 }
 
 export default function LobbyScreen() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, authToken, loading: authLoading } = useAuth();
   const [tables, setTables] = useState<TableListing[]>([]);
   const [featureTournament, setFeatureTournament] = useState<Tournament | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -36,7 +36,7 @@ export default function LobbyScreen() {
 
   useEffect(() => {
     const activeUserId = user?.userId;
-    if (!activeUserId) {
+    if (!activeUserId || !authToken) {
       setLoading(false);
       return;
     }
@@ -54,6 +54,8 @@ export default function LobbyScreen() {
             speed: 'standard',
             tableSize: 6,
             skillLevel: 'beginner',
+          }, {
+            headers: { authorization: `Bearer ${authToken}` },
           }),
         ]);
 
@@ -73,7 +75,7 @@ export default function LobbyScreen() {
     return () => {
       active = false;
     };
-  }, [user?.userId]);
+  }, [authToken, user?.userId]);
 
   if (authLoading || loading) {
     return (
