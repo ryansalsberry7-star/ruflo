@@ -153,19 +153,20 @@ test('forces fold when per-turn action timer expires', async () => {
     observer.send(JSON.stringify({ event: 'subscribe_table', payload: { tableId: 'cash-aurora' } }));
     await waitForEvent(observer, 'table_sync');
 
-    const timerStarted = await waitForEvent(observer, 'turn_timer_started');
-    assert.equal(timerStarted.payload?.tableId, 'cash-aurora');
-    const expectedTimedOutUser = String(timerStarted.payload?.currentTurn ?? '');
-    assert.ok(expectedTimedOutUser.length > 0);
-
+    // Nobody is connected as an actual player at any seat, so once the current actor's timer
+    // expires the dealer brain will keep auto-folding and redealing indefinitely (there's always
+    // a next player on the clock). Rather than pre-guessing who that will be, take identity from
+    // the timeout event itself and check server state immediately after -- this stays correct
+    // regardless of which fold in the ongoing cascade we happen to observe.
     const timedOut = await waitForEvent(observer, 'turn_action_timed_out');
-    assert.equal(timedOut.payload?.userId, expectedTimedOutUser);
+    const timedOutUserId = String(timedOut.payload?.userId ?? '');
+    assert.ok(timedOutUserId.length > 0);
 
     const table = services.poker.getTable('cash-aurora');
-    const timedOutSeat = table.players.find((entry) => entry.id === expectedTimedOutUser);
+    const timedOutSeat = table.players.find((entry) => entry.id === timedOutUserId);
     assert.ok(timedOutSeat);
     assert.equal(timedOutSeat?.folded, true);
-    assert.notEqual(table.currentTurn, expectedTimedOutUser);
+    assert.notEqual(table.currentTurn, timedOutUserId);
   } finally {
     observer.close();
     await app.stop();

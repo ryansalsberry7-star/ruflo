@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import {
   applyAction,
   compareEvaluatedHands,
@@ -6,6 +7,8 @@ import {
   dealRiver,
   dealTurn,
   evaluateBestHand,
+  isBettingRoundClosed,
+  postBlinds,
   type ActionType,
   type Card,
   type PlayerAction,
@@ -15,6 +18,7 @@ import type { StakeLevel, TournamentListing, ZeroRakePolicy } from '../contracts
 import { STAKE_LEVELS, TOURNAMENT_LISTINGS, ZERO_RAKE_POLICY } from '../contracts.js';
 import { DealerService, type DealerHandState, type HandVerificationRecord } from './dealer-service.js';
 import { HighHandService } from './high-hand-service.js';
+import type { WalletService } from './wallet-service.js';
 
 export interface SettledPayout {
   playerId: string;
@@ -52,7 +56,12 @@ export interface FeaturedTable {
   spectators: number;
 }
 
-export class PokerService {
+export interface PokerServiceOptions {
+  /** Automatically advance streets and settle/redeal hands the instant a betting round closes. */
+  autoProgress?: boolean;
+}
+
+export class PokerService extends EventEmitter {
   private readonly tables = new Map<string, TableState>();
   private readonly handHistory = new Map<string, SettledHand[]>();
   private readonly tablePrivacy = new Map<string, boolean>();
@@ -62,7 +71,13 @@ export class PokerService {
   private readonly verificationRecords = new Map<string, HandVerificationRecord>();
   private readonly tableHandIndex = new Map<string, string[]>();
 
-  constructor(private readonly highHands?: HighHandService) {}
+  constructor(
+    private readonly highHands?: HighHandService,
+    private readonly wallet?: WalletService,
+    private readonly options: PokerServiceOptions = {}
+  ) {
+    super();
+  }
 
   createCashTable(tableId: string, stakeId: string, players: Array<{ id: string; name: string; stack: number }>, isPrivate = false): TableState {
     const stake = STAKE_LEVELS.find((entry) => entry.id === stakeId);
@@ -98,6 +113,7 @@ export class PokerService {
           isDealer: false,
           isSmallBlind: false,
           isBigBlind: false,
+          streetContribution: 0,
         },
       ],
     };
@@ -186,7 +202,43 @@ export class PokerService {
       this.activeDealerHands.set(tableId, tracked);
     }
 
-    return next;
+    if (this.options.autoProgress) {
+      this.progressHand(tableId);
+    }
+
+    return this.getTable(tableId);
+  }
+
+  /**
+   * The dealer brain: once a betting round closes, deal the next street automatically; once the
+   * river closes (or the board runs out because everyone left is all-in), settle the hand and
+   * redeal immediately. Runs for as long as 2+ players are seated, independent of any client.
+   */
+  private progressHand(tableId: string): void {
+    // Capped so a bug can never spin this into an infinite loop; a real hand never needs more
+    // than a handful of iterations (fold-out, or preflop -> flop -> turn -> river -> settle).
+    for (let iterations = 0; iterations < 10; iterations += 1) {
+      const table = this.getTable(tableId);
+      if (!isBettingRoundClosed(table)) return;
+
+      const stillContesting = table.players.filter((entry) => !entry.folded);
+      if (stillContesting.length <= 1) {
+        this.settleHand(tableId);
+        continue;
+      }
+
+      const canStillBet = table.players.filter((entry) => !entry.folded && !entry.allIn && entry.stack > 0);
+      if (table.currentStreet === 'river' || canStillBet.length < 2) {
+        // All-in runout: no more betting is possible, so deal straight through to the river.
+        while (this.getTable(tableId).currentStreet !== 'river') {
+          this.advanceStreet(tableId);
+        }
+        this.settleHand(tableId);
+        continue;
+      }
+
+      this.advanceStreet(tableId);
+    }
   }
 
   forceFoldForTimeout(tableId: string, playerId: string): TableState {
@@ -292,8 +344,14 @@ export class PokerService {
       });
     }
 
+    for (const payout of payouts) {
+      this.wallet?.creditWinnings(payout.playerId, payout.amount, tableId);
+    }
+
     this.resetTableForNextHand(tableId);
     this.startDealerHandForTable(tableId);
+
+    this.emit('hand-settled', settled);
 
     return settled;
   }
@@ -419,10 +477,8 @@ export class PokerService {
   private resetTableForNextHand(tableId: string): void {
     const table = this.getTable(tableId);
     const nextButton = table.players.length === 0 ? 0 : (table.buttonIndex + 1) % table.players.length;
-    const activePlayers = table.players.filter((entry) => entry.stack > 0);
-    const currentTurn = activePlayers[0]?.id ?? null;
 
-    const next: TableState = {
+    let next: TableState = {
       ...table,
       buttonIndex: nextButton,
       currentStreet: 'preflop',
@@ -430,17 +486,24 @@ export class PokerService {
       sidePots: [],
       communityCards: [],
       actionHistory: [],
-      currentTurn,
+      currentTurn: null,
+      currentBet: 0,
+      minRaise: table.bigBlind,
+      actedThisRound: [],
       completed: false,
-      players: table.players.map((entry, idx) => ({
+      players: table.players.map((entry) => ({
         ...entry,
         folded: false,
         allIn: false,
-        isDealer: idx === nextButton,
-        isSmallBlind: idx === ((nextButton + 1) % Math.max(table.players.length, 1)),
-        isBigBlind: idx === ((nextButton + 2) % Math.max(table.players.length, 1)),
+        streetContribution: 0,
       })),
     };
+
+    // postBlinds also recomputes isDealer/isSmallBlind/isBigBlind for the rotated button and
+    // sets currentTurn to whoever acts first preflop; it's a no-op below 2 seated players.
+    if (next.players.length >= 2) {
+      next = postBlinds(next);
+    }
 
     this.tables.set(tableId, next);
   }

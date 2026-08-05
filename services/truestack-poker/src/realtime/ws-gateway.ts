@@ -2,7 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import type { Server as HttpServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { actionEnvelopeSchema } from '../contracts.js';
-import { PokerService } from '../services/poker-service.js';
+import { PokerService, type SettledHand } from '../services/poker-service.js';
 import { WalletService } from '../services/wallet-service.js';
 import { AnalyticsService } from '../services/analytics-service.js';
 import { CoachService } from '../services/coach-service.js';
@@ -60,6 +60,16 @@ export function attachRealtimeGateway(options: GatewayOptions) {
   };
 
   server.on('upgrade', onUpgrade);
+
+  // The dealer brain (PokerService.progressHand) can advance streets, settle, and redeal a hand
+  // entirely on its own -- outside of any single request. Broadcast whenever it does so every
+  // connected client stays in sync without polling.
+  const onHandSettled = (settled: SettledHand) => {
+    broadcastTable(clients, settled.tableId, { event: 'hand_settled', payload: { settled } });
+    broadcastTable(clients, settled.tableId, { event: 'table_update', payload: { table: services.poker.getTable(settled.tableId) } });
+    scheduleTurnTimeout(tableTurnTimers, services, clients, settled.tableId, turnActionMs);
+  };
+  services.poker.on('hand-settled', onHandSettled);
 
   wss.on('connection', (socket) => {
     clients.set(socket, { socket, userId: 'guest', tableId: null });
@@ -219,6 +229,7 @@ export function attachRealtimeGateway(options: GatewayOptions) {
     wss,
     close: async () => {
       server.off('upgrade', onUpgrade);
+      services.poker.off('hand-settled', onHandSettled);
       for (const pending of pendingDisconnects.values()) {
         clearTimeout(pending.timeout);
       }

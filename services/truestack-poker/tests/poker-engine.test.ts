@@ -93,7 +93,7 @@ test('rejects out-of-turn actions and wagers above stack', () => {
   });
 
   assert.throws(() => applyAction(table, { playerId: 'p2', type: 'call', amount: 10 }), /out of turn/i);
-  assert.throws(() => applyAction(table, { playerId: 'p1', type: 'bet', amount: 5000 }), /insufficient stack/i);
+  assert.throws(() => applyAction(table, { playerId: 'p1', type: 'raise', amount: 5000 }), /insufficient stack/i);
 });
 
 test('deals street cards and evaluates a hand rank', () => {
@@ -178,7 +178,7 @@ test('settlement uses dealer hole cards to determine the real winner and rank', 
     { suit: 'clubs', rank: '9', id: '9c' },
   ];
 
-  poker.applyPlayerAction('table-real-showdown', 'p1', 'bet', 20);
+  poker.applyPlayerAction('table-real-showdown', 'p1', 'raise', 20);
   poker.applyPlayerAction('table-real-showdown', 'p2', 'call', 20);
   const settled = poker.settleHand('table-real-showdown');
   const verification = poker.getHandVerification(settled.handId);

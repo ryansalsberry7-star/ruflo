@@ -94,13 +94,14 @@ test('accepts direct multiplayer action endpoint updates', async () => {
       },
       body: JSON.stringify({
         userId: 'p1',
-        action: { type: 'bet', amount: 25 },
+        action: { type: 'raise', amount: 25 },
       }),
     });
 
     const actionPayload = await actionRes.json();
     assert.equal(actionRes.status, 200);
-    assert.equal(actionPayload.table.pot, 25);
+    // 25 raised-to by p1 (dealer/UTG, 0 preflop contribution) plus the 0.05/0.1 blinds already posted.
+    assert.equal(actionPayload.table.pot, 25.15);
   } finally {
     await app.stop();
   }
@@ -149,7 +150,7 @@ test('serves fair-play verification and replay payloads for completed hands', as
   const port = await app.start(0);
 
   try {
-    services.poker.applyPlayerAction('cash-aurora', 'p1', 'bet', 10);
+    services.poker.applyPlayerAction('cash-aurora', 'p1', 'raise', 10);
     services.poker.applyPlayerAction('cash-aurora', 'p2', 'call', 10);
     services.poker.advanceStreet('cash-aurora');
     services.poker.advanceStreet('cash-aurora');
@@ -218,7 +219,7 @@ test('supports social clubs, ai hand analysis, and find-my-game matchmaking', as
     });
     const loginPayload = await loginRes.json();
 
-    services.poker.applyPlayerAction('cash-aurora', 'p1', 'bet', 15);
+    services.poker.applyPlayerAction('cash-aurora', 'p1', 'raise', 15);
     services.poker.applyPlayerAction('cash-aurora', 'p2', 'call', 15);
     const settled = services.poker.settleHand('cash-aurora');
 
@@ -360,13 +361,20 @@ test('serves high hand leaderboards, history, premium benefits, and shareable hi
     });
     const loginPayload = await loginRes.json();
 
-    const dealerHand = (services.poker as unknown as {
-      activeDealerHands: Map<string, {
-        communityCards: Array<{ suit: 'clubs' | 'diamonds' | 'hearts' | 'spades'; rank: '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | 'T' | 'J' | 'Q' | 'K' | 'A'; id: string }>;
-        holeCardsByPlayer: Record<string, Array<{ suit: 'clubs' | 'diamonds' | 'hearts' | 'spades'; rank: '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | 'T' | 'J' | 'Q' | 'K' | 'A'; id: string }>>;
-      }>;
-    }).activeDealerHands.get('cash-aurora');
+    type ReflectedDealerHand = {
+      communityCards: Array<{ suit: 'clubs' | 'diamonds' | 'hearts' | 'spades'; rank: '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | 'T' | 'J' | 'Q' | 'K' | 'A'; id: string }>;
+      holeCardsByPlayer: Record<string, Array<{ suit: 'clubs' | 'diamonds' | 'hearts' | 'spades'; rank: '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | 'T' | 'J' | 'Q' | 'K' | 'A'; id: string }>>;
+    };
+    const activeDealerHands = (services.poker as unknown as { activeDealerHands: Map<string, ReflectedDealerHand> }).activeDealerHands;
 
+    // The dealer brain auto-deals the flop the instant every seated player matches, replacing
+    // whatever the dealer's real (random) hand state holds -- so the actions must run first, and
+    // the deterministic board/hole cards get injected fresh right before settlement, not before.
+    services.poker.applyPlayerAction('cash-aurora', 'p1', 'raise', 25);
+    services.poker.applyPlayerAction('cash-aurora', 'p2', 'call', 25);
+    services.poker.applyPlayerAction('cash-aurora', 'p3', 'call', 25);
+
+    const dealerHand = activeDealerHands.get('cash-aurora');
     assert.ok(dealerHand);
     if (!dealerHand) return;
 
@@ -392,9 +400,6 @@ test('serves high hand leaderboards, history, premium benefits, and shareable hi
       { suit: 'spades', rank: '9', id: '9s' },
     ];
 
-    services.poker.applyPlayerAction('cash-aurora', 'p1', 'bet', 25);
-    services.poker.applyPlayerAction('cash-aurora', 'p2', 'call', 25);
-    services.poker.applyPlayerAction('cash-aurora', 'p3', 'call', 25);
     const settled = services.poker.settleHand('cash-aurora');
 
     const leaderboardRes = await fetch(`http://127.0.0.1:${port}/api/high-hands/leaderboards`);

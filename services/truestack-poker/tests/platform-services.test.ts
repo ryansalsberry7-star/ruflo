@@ -20,7 +20,7 @@ test('settles hands with zero rake and full player-to-player pot distribution', 
     { id: 'p2', name: 'Linus', stack: 1000 },
   ]);
 
-  poker.applyPlayerAction('table-zero-rake', 'p1', 'bet', 10);
+  poker.applyPlayerAction('table-zero-rake', 'p1', 'raise', 10);
   poker.applyPlayerAction('table-zero-rake', 'p2', 'call', 10);
 
   const settled = poker.settleHand('table-zero-rake');
@@ -67,7 +67,7 @@ test('creates hand verification records with deck commitment and action timeline
     { id: 'p2', name: 'Linus', stack: 1000 },
   ]);
 
-  poker.applyPlayerAction('table-verify', 'p1', 'bet', 20);
+  poker.applyPlayerAction('table-verify', 'p1', 'raise', 20);
   poker.applyPlayerAction('table-verify', 'p2', 'call', 20);
   poker.advanceStreet('table-verify');
   poker.advanceStreet('table-verify');
@@ -91,7 +91,7 @@ test('supports replay retrieval for spectator and post-hand review flows', () =>
     { id: 'p2', name: 'Linus', stack: 1000 },
   ]);
 
-  poker.applyPlayerAction('table-replay', 'p1', 'bet', 10);
+  poker.applyPlayerAction('table-replay', 'p1', 'raise', 10);
   poker.applyPlayerAction('table-replay', 'p2', 'call', 10);
   const settled = poker.settleHand('table-replay');
   const replay = poker.getHandReplay('table-replay', settled.handId);
