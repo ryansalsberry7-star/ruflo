@@ -37,10 +37,6 @@ export function DealerStage({ cue, preferences, viewportWidth, tableWidth, table
     <View style={styles.stageWrap}>
       <DealerScene cue={cue} renderProfile={renderProfile} preferences={preferences} />
       <DealerCardOverlay cue={cue} seatTargets={seatTargets} renderProfile={renderProfile} tableWidth={tableWidth} tableHeight={tableHeight} />
-      <View style={styles.statusPill}>
-        <Text style={styles.statusEyebrow}>{renderProfile.qualityTier.toUpperCase()} LIVE DEALER</Text>
-        <Text style={styles.statusText}>{cue.statusLabel}</Text>
-      </View>
     </View>
   );
 }
@@ -53,29 +49,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#D8DDE3',
     borderWidth: 1,
     borderColor: '#8B857B',
-  },
-  statusPill: {
-    position: 'absolute',
-    right: 12,
-    top: 12,
-    borderRadius: 14,
-    backgroundColor: 'rgba(249,244,236,0.92)',
-    borderWidth: 1,
-    borderColor: '#B7AA90',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 1,
-  },
-  statusEyebrow: {
-    color: '#8C6D39',
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1.1,
-  },
-  statusText: {
-    color: '#3D3730',
-    fontSize: 11,
-    fontWeight: '700',
   },
   fallbackWrap: {
     flexDirection: 'row',

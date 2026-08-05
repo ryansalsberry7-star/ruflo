@@ -218,6 +218,10 @@ const styles = StyleSheet.create({
     bottom: 8,
     alignItems: 'center',
     gap: 1,
+    backgroundColor: 'rgba(249,244,236,0.88)',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
   eyebrow: {
     color: '#8C6D39',
