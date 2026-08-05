@@ -1,43 +1,117 @@
 import { Link } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { getJson } from './lib/api';
 
-const reviewedHands = [
-  {
-    handId: 'cash-aurora-1722864000-4821',
-    summary: 'Pot $60 • Pair • 3 players',
-    note: 'AI note: River call frequency too high in this line.',
-  },
-  {
-    handId: 'cash-aurora-1722863400-1942',
-    summary: 'Pot $112 • Two pair • 4 players',
-    note: 'AI note: Turn check-raise was high EV versus capped range.',
-  },
-];
+interface SettledHand {
+  handId: string;
+  totalPot: number;
+  payouts: Array<{ playerId: string; amount: number }>;
+}
+
+interface HandAnalysis {
+  betterPlays: string[];
+  strategicReasoning: string;
+}
+
+const TABLE_ID = 'cash-aurora';
+const USER_ID = 'p1';
 
 export default function HandHistoryScreen() {
+  const [hands, setHands] = useState<SettledHand[]>([]);
+  const [analysisByHand, setAnalysisByHand] = useState<Record<string, HandAnalysis>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [analyzingHandId, setAnalyzingHandId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function load(): Promise<void> {
+      try {
+        const response = await getJson<{ history: SettledHand[] }>(`/api/tables/${TABLE_ID}/hand-history`);
+        if (!active) return;
+        setHands(response.history.slice().reverse());
+      } catch (loadError) {
+        if (!active) return;
+        setError(loadError instanceof Error ? loadError.message : 'Failed to load hand history.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void load();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function analyzeHand(handId: string): Promise<void> {
+    setAnalyzingHandId(handId);
+    try {
+      const response = await getJson<{ analysis: HandAnalysis }>(
+        `/api/coach/hands/${handId}/analyze?userId=${USER_ID}&tableId=${TABLE_ID}`
+      );
+      setAnalysisByHand((current) => ({ ...current, [handId]: response.analysis }));
+    } catch (analysisError) {
+      setError(analysisError instanceof Error ? analysisError.message : 'Failed to analyze hand.');
+    } finally {
+      setAnalyzingHandId(null);
+    }
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.loadingText}>Loading hand history...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.errorText}>{error}</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.eyebrow}>REPLAY + ANALYSIS</Text>
       <Text style={styles.title}>Hand History</Text>
       <Text style={styles.subtitle}>Replay each hand, inspect every action, and run instant strategic analysis.</Text>
 
-      {reviewedHands.map((hand) => (
+      {hands.map((hand) => (
         <View key={hand.handId} style={styles.item}>
           <Text style={styles.itemTitle}>{hand.handId}</Text>
-          <Text style={styles.itemMeta}>{hand.summary}</Text>
-          <Text style={styles.itemNote}>{hand.note}</Text>
+          <Text style={styles.itemMeta}>Pot ${hand.totalPot.toFixed(2)} • {hand.payouts.length} payout(s)</Text>
+          <Text style={styles.itemNote}>
+            {analysisByHand[hand.handId]?.betterPlays[0] ?? 'Tap Analyze This Hand for AI strategy insights.'}
+          </Text>
           <View style={styles.buttonRow}>
             <Link href="/hand-verification" asChild>
               <Pressable style={styles.buttonSecondary}>
                 <Text style={styles.buttonSecondaryText}>Replay Hand</Text>
               </Pressable>
             </Link>
-            <Pressable style={styles.buttonPrimary}>
-              <Text style={styles.buttonPrimaryText}>Analyze This Hand</Text>
+            <Pressable style={styles.buttonPrimary} onPress={() => void analyzeHand(hand.handId)}>
+              <Text style={styles.buttonPrimaryText}>
+                {analyzingHandId === hand.handId ? 'Analyzing...' : 'Analyze This Hand'}
+              </Text>
             </Pressable>
           </View>
+          {analysisByHand[hand.handId]?.strategicReasoning ? (
+            <Text style={styles.itemNote}>Strategy: {analysisByHand[hand.handId].strategicReasoning}</Text>
+          ) : null}
         </View>
       ))}
+      {hands.length === 0 ? (
+        <View style={styles.item}>
+          <Text style={styles.itemTitle}>No completed hands yet</Text>
+          <Text style={styles.itemMeta}>Play a hand at the table to unlock replay and AI analysis.</Text>
+        </View>
+      ) : null}
 
       <View style={styles.infoCard}>
         <Text style={styles.infoTitle}>Premium Coaching</Text>
@@ -48,6 +122,9 @@ export default function HandHistoryScreen() {
 }
 
 const styles = StyleSheet.create({
+  centered: { flex: 1, backgroundColor: '#060816', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  loadingText: { color: '#C7D8FA', fontSize: 14 },
+  errorText: { color: '#FFB4B4', fontSize: 13, textAlign: 'center' },
   screen: { flex: 1, backgroundColor: '#060816' },
   content: { padding: 24, gap: 12, paddingTop: 54 },
   eyebrow: { color: '#7ED3FF', fontSize: 11, letterSpacing: 1.5, fontWeight: '700' },

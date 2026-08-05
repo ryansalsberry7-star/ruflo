@@ -1,13 +1,90 @@
 import { Link } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { getJson, postJson } from './lib/api';
 
-const tables = [
-  { name: 'Aurora', stakes: '$0.05 / $0.10', speed: 'Fast', players: '24 online' },
-  { name: 'Harbor', stakes: '$1 / $2', speed: 'Standard', players: '88 online' },
-  { name: 'Summit', stakes: '$5 / $10', speed: 'Premium', players: '43 online' },
-];
+interface TableListing {
+  id: string;
+  stake: {
+    smallBlind: number;
+    bigBlind: number;
+  };
+  speed: 'standard' | 'fast' | 'turbo';
+  playersSeated: number;
+}
+
+interface Tournament {
+  name: string;
+  entryFee: number;
+  registeredPlayers: number;
+}
+
+interface Recommendation {
+  tableId: string;
+  fitScore: number;
+  reason: string;
+}
+
+const USER_ID = 'p1';
 
 export default function LobbyScreen() {
+  const [tables, setTables] = useState<TableListing[]>([]);
+  const [featureTournament, setFeatureTournament] = useState<Tournament | null>(null);
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function load(): Promise<void> {
+      try {
+        const [cashGames, tournaments, findMyGame] = await Promise.all([
+          getJson<{ listings: TableListing[] }>('/api/lobby/cash-games'),
+          getJson<{ tournaments: Tournament[] }>('/api/lobby/tournaments'),
+          postJson<{ recommendations: Recommendation[] }>('/api/lobby/find-my-game', {
+            userId: USER_ID,
+            stakes: 'micro',
+            speed: 'standard',
+            tableSize: 6,
+            skillLevel: 'beginner',
+          }),
+        ]);
+
+        if (!active) return;
+        setTables(cashGames.listings);
+        setFeatureTournament(tournaments.tournaments[0] ?? null);
+        setRecommendations(findMyGame.recommendations);
+      } catch (loadError) {
+        if (!active) return;
+        setError(loadError instanceof Error ? loadError.message : 'Failed to load lobby data.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void load();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.loadingText}>Loading lobby...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.errorText}>{error}</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.header}>
@@ -26,8 +103,10 @@ export default function LobbyScreen() {
 
       <Link href="/tournaments" asChild>
         <Pressable style={styles.tournamentBanner}>
-          <Text style={styles.bannerTitle}>Weekend GlassRiver Major</Text>
-          <Text style={styles.bannerMeta}>$100 entry • 220 registered • Starts in 23h</Text>
+          <Text style={styles.bannerTitle}>{featureTournament?.name ?? 'Tournament Spotlight'}</Text>
+          <Text style={styles.bannerMeta}>
+            ${featureTournament?.entryFee ?? 0} entry • {featureTournament?.registeredPlayers ?? 0} registered
+          </Text>
         </Pressable>
       </Link>
 
@@ -35,31 +114,43 @@ export default function LobbyScreen() {
         <Text style={styles.matchTitle}>Find My Game</Text>
         <Text style={styles.matchText}>Tell us your stakes, skill level, and pace. We recommend the best active tables instantly.</Text>
         <View style={styles.matchTags}>
-          <Text style={styles.matchTag}>Micro stakes</Text>
-          <Text style={styles.matchTag}>Beginner-friendly</Text>
-          <Text style={styles.matchTag}>6-max</Text>
+          {recommendations.map((recommendation) => (
+            <Text key={recommendation.tableId} style={styles.matchTag}>
+              {recommendation.tableId} ({recommendation.fitScore})
+            </Text>
+          ))}
+          {recommendations.length === 0 ? <Text style={styles.matchTag}>No recommendation yet</Text> : null}
         </View>
+        {recommendations[0]?.reason ? <Text style={styles.matchText}>{recommendations[0].reason}</Text> : null}
       </Pressable>
 
       {tables.map((table) => (
-        <Link key={table.name} href="/table" asChild>
+        <Link key={table.id} href="/table" asChild>
           <Pressable style={styles.tableCard}>
             <View style={styles.left}>
-              <Text style={styles.tableName}>{table.name}</Text>
-              <Text style={styles.detail}>{table.stakes}</Text>
+              <Text style={styles.tableName}>{table.id}</Text>
+              <Text style={styles.detail}>${table.stake.smallBlind} / ${table.stake.bigBlind}</Text>
             </View>
             <View style={styles.right}>
               <Text style={styles.badge}>{table.speed}</Text>
-              <Text style={styles.detail}>{table.players}</Text>
+              <Text style={styles.detail}>{table.playersSeated} seated</Text>
             </View>
           </Pressable>
         </Link>
       ))}
+      {tables.length === 0 ? (
+        <View style={styles.tableCard}>
+          <Text style={styles.detail}>No active tables at the moment.</Text>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  centered: { flex: 1, backgroundColor: '#060816', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  loadingText: { color: '#C7D8FA', fontSize: 14 },
+  errorText: { color: '#FFB4B4', fontSize: 13, textAlign: 'center' },
   screen: { flex: 1, backgroundColor: '#060816' },
   content: { padding: 24, gap: 14 },
   header: { gap: 8, marginTop: 24 },

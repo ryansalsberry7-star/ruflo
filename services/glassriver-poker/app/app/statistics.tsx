@@ -1,17 +1,83 @@
+import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { getJson } from './lib/api';
 
-const coachSnapshot = {
-  sessionLength: '1h 48m',
-  handsPlayed: 126,
-  netResult: '+$184',
-  biggestPot: '$312',
-  bestDecision: 'Turn check-raise on draw-heavy board for max fold equity.',
-  biggestMistake: 'Calling too often on river against polar sizing.',
-  missedOpportunity: 'Under-defending the big blind versus small opens.',
-  style: 'Disciplined TAG with low blind defense frequency.',
-};
+interface SessionTracker {
+  averageSessionLengthMinutes: number;
+  totalHands: number;
+  bestSessionProfit: number;
+  biggestPots: number[];
+  recentTrend: Array<{ net: number }>;
+}
+
+interface SessionReview {
+  biggestMistakes: string[];
+  bestDecisions: string[];
+  missedOpportunities: string[];
+  styleAnalysis: string[];
+  premium: {
+    personalizedPlan: string[];
+    positionLeaks: string[];
+  };
+}
+
+const USER_ID = 'p1';
 
 export default function StatisticsScreen() {
+  const [tracker, setTracker] = useState<SessionTracker | null>(null);
+  const [review, setReview] = useState<SessionReview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function load(): Promise<void> {
+      try {
+        const [trackerResponse, reviewResponse] = await Promise.all([
+          getJson<{ tracker: SessionTracker }>(`/api/session-tracker/${USER_ID}`),
+          getJson<{ review: SessionReview }>(`/api/coach/${USER_ID}/session-review`),
+        ]);
+
+        if (!active) return;
+        setTracker(trackerResponse.tracker);
+        setReview(reviewResponse.review);
+      } catch (loadError) {
+        if (!active) return;
+        setError(loadError instanceof Error ? loadError.message : 'Failed to load session analytics.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void load();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const totalNet = useMemo(() => {
+    if (!tracker) return 0;
+    return tracker.recentTrend.reduce((sum, point) => sum + point.net, 0);
+  }, [tracker]);
+
+  if (loading) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.loadingText}>Loading AI coaching insights...</Text>
+      </View>
+    );
+  }
+
+  if (error || !tracker || !review) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.errorText}>{error ?? 'Session analytics unavailable.'}</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.eyebrow}>AI COACH</Text>
@@ -19,32 +85,32 @@ export default function StatisticsScreen() {
       <Text style={styles.subtitle}>Improve faster with post-session analysis built into every game.</Text>
 
       <View style={styles.row}>
-        <StatCard label="Session" value={coachSnapshot.sessionLength} />
-        <StatCard label="Hands" value={String(coachSnapshot.handsPlayed)} />
+        <StatCard label="Session" value={`${tracker.averageSessionLengthMinutes.toFixed(1)}m avg`} />
+        <StatCard label="Hands" value={String(tracker.totalHands)} />
       </View>
       <View style={styles.row}>
-        <StatCard label="Net" value={coachSnapshot.netResult} />
-        <StatCard label="Biggest Pot" value={coachSnapshot.biggestPot} />
+        <StatCard label="Net" value={`${totalNet >= 0 ? '+' : ''}$${totalNet.toFixed(2)}`} />
+        <StatCard label="Biggest Pot" value={`$${(tracker.biggestPots[0] ?? 0).toFixed(2)}`} />
       </View>
 
       <View style={styles.panel}>
         <Text style={styles.panelTitle}>Biggest Mistake</Text>
-        <Text style={styles.panelBody}>{coachSnapshot.biggestMistake}</Text>
+        <Text style={styles.panelBody}>{review.biggestMistakes[0] ?? 'No major mistake pattern detected yet.'}</Text>
       </View>
 
       <View style={styles.panel}>
         <Text style={styles.panelTitle}>Best Decision</Text>
-        <Text style={styles.panelBody}>{coachSnapshot.bestDecision}</Text>
+        <Text style={styles.panelBody}>{review.bestDecisions[0] ?? 'Keep collecting hands for high-confidence highlights.'}</Text>
       </View>
 
       <View style={styles.panel}>
         <Text style={styles.panelTitle}>Missed Opportunity</Text>
-        <Text style={styles.panelBody}>{coachSnapshot.missedOpportunity}</Text>
+        <Text style={styles.panelBody}>{review.missedOpportunities[0] ?? 'No specific missed opportunities in current sample.'}</Text>
       </View>
 
       <View style={styles.panel}>
         <Text style={styles.panelTitle}>Playing Style Analysis</Text>
-        <Text style={styles.panelBody}>{coachSnapshot.style}</Text>
+        <Text style={styles.panelBody}>{review.styleAnalysis[0] ?? 'Style profile is still calibrating.'}</Text>
       </View>
 
       <View style={styles.tierPanel}>
@@ -52,6 +118,12 @@ export default function StatisticsScreen() {
         <Text style={styles.tierText}>Basic session stats and top 1 leak.</Text>
         <Text style={styles.tierTitle}>Premium</Text>
         <Text style={styles.tierText}>Hand-by-hand analysis, position leaks, and personalized weekly plan.</Text>
+        {review.premium.personalizedPlan.slice(0, 2).map((step) => (
+          <Text key={step} style={styles.tierText}>• {step}</Text>
+        ))}
+        {review.premium.positionLeaks.slice(0, 1).map((leak) => (
+          <Text key={leak} style={styles.tierText}>• {leak}</Text>
+        ))}
       </View>
     </ScrollView>
   );
@@ -67,6 +139,9 @@ function StatCard({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  centered: { flex: 1, backgroundColor: '#060816', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  loadingText: { color: '#C7D8FA', fontSize: 14 },
+  errorText: { color: '#FFB4B4', fontSize: 13, textAlign: 'center' },
   screen: { flex: 1, backgroundColor: '#060816' },
   content: { padding: 20, paddingTop: 50, gap: 12 },
   eyebrow: { color: '#7ED3FF', fontSize: 11, fontWeight: '700', letterSpacing: 1.8 },

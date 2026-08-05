@@ -1,29 +1,89 @@
+import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { getJson } from './lib/api';
 
-const profile = {
-  username: 'AdaRiver',
-  verifiedHuman: true,
-  trustScore: 94,
-  accountAge: '14 months',
-  security: 'ID + device verified',
-  level: 8,
-  badges: ['Trusted Player', 'Table Veteran', 'Sportsmanship+'],
-  favoriteGames: ['No-Limit Holdem', 'Heads-Up Sit & Go'],
-  winStreak: 5,
-  totalHands: 1428,
-  tournamentHistory: [
-    { name: 'Weekend GlassRiver Major', placement: 9, prize: '$1,800' },
-    { name: 'Daily Royal Sprint', placement: 2, prize: '$420' },
-  ],
-  achievements: [
-    'First Royal Flush',
-    '1,000 Hands Played',
-    'Comeback King',
-    'Bluff Master',
-  ],
-};
+interface PlayerProfile {
+  userId: string;
+  username: string;
+  favoriteGames: string[];
+  handsPlayed: number;
+  winStreak: number;
+  level: number;
+  badges: string[];
+  tournamentHistory: Array<{
+    tournamentId: string;
+    placement: number;
+    prize: number;
+  }>;
+}
+
+interface TrustSnapshot {
+  verifiedHuman: boolean;
+  trustScore: number;
+  accountAgeDays: number;
+  securityVerificationStatus: string;
+}
+
+interface Achievement {
+  id: string;
+  title: string;
+}
+
+const USER_ID = 'p1';
 
 export default function ProfileScreen() {
+  const [profile, setProfile] = useState<PlayerProfile | null>(null);
+  const [trust, setTrust] = useState<TrustSnapshot | null>(null);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function load(): Promise<void> {
+      try {
+        const [profileResponse, trustResponse, achievementsResponse] = await Promise.all([
+          getJson<{ profile: PlayerProfile }>(`/api/profiles/${USER_ID}`),
+          getJson<{ trust: TrustSnapshot }>(`/api/trust/${USER_ID}`),
+          getJson<{ achievements: Achievement[] }>(`/api/profiles/${USER_ID}/achievements`),
+        ]);
+
+        if (!active) return;
+        setProfile(profileResponse.profile);
+        setTrust(trustResponse.trust);
+        setAchievements(achievementsResponse.achievements);
+      } catch (loadError) {
+        if (!active) return;
+        setError(loadError instanceof Error ? loadError.message : 'Failed to load profile.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void load();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.loadingText}>Loading player profile...</Text>
+      </View>
+    );
+  }
+
+  if (error || !profile || !trust) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.errorText}>{error ?? 'Profile unavailable.'}</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.eyebrow}>PLAYER PROFILE</Text>
@@ -31,10 +91,10 @@ export default function ProfileScreen() {
 
       <View style={styles.trustCard}>
         <Text style={styles.cardTitle}>Verified Human Poker</Text>
-        <Text style={styles.trustRow}>Badge: {profile.verifiedHuman ? 'Verified Human' : 'Unverified'}</Text>
-        <Text style={styles.trustRow}>Trust score: {profile.trustScore}/99</Text>
-        <Text style={styles.trustRow}>Account age: {profile.accountAge}</Text>
-        <Text style={styles.trustRow}>Security: {profile.security}</Text>
+        <Text style={styles.trustRow}>Badge: {trust.verifiedHuman ? 'Verified Human' : 'Unverified'}</Text>
+        <Text style={styles.trustRow}>Trust score: {trust.trustScore}/99</Text>
+        <Text style={styles.trustRow}>Account age: {Math.max(1, trust.accountAgeDays)} days</Text>
+        <Text style={styles.trustRow}>Security: {trust.securityVerificationStatus}</Text>
         <Text style={styles.trustNote}>No bots. No house players. Real opponents only.</Text>
       </View>
 
@@ -44,7 +104,7 @@ export default function ProfileScreen() {
           <Text style={styles.statLabel}>Player level</Text>
         </View>
         <View style={styles.statCard}>
-          <Text style={styles.statValue}>{profile.totalHands}</Text>
+          <Text style={styles.statValue}>{profile.handsPlayed}</Text>
           <Text style={styles.statLabel}>Hands tracked</Text>
         </View>
         <View style={styles.statCard}>
@@ -75,26 +135,31 @@ export default function ProfileScreen() {
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Achievements</Text>
-        {profile.achievements.map((item) => (
-          <Text key={item} style={styles.rowText}>
-            • {item}
+        {achievements.map((item) => (
+          <Text key={item.id} style={styles.rowText}>
+            • {item.title}
           </Text>
         ))}
+        {achievements.length === 0 ? <Text style={styles.rowText}>• Play tracked sessions to unlock achievements.</Text> : null}
       </View>
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Recent Tournament History</Text>
         {profile.tournamentHistory.map((entry) => (
-          <Text key={entry.name} style={styles.rowText}>
-            • {entry.name}: {entry.placement}th place ({entry.prize})
+          <Text key={`${entry.tournamentId}-${entry.placement}`} style={styles.rowText}>
+            • {entry.tournamentId}: {entry.placement}th place (${entry.prize})
           </Text>
         ))}
+        {profile.tournamentHistory.length === 0 ? <Text style={styles.rowText}>• No tournament results yet.</Text> : null}
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  centered: { flex: 1, backgroundColor: '#050A16', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  loadingText: { color: '#C7D8FA', fontSize: 14 },
+  errorText: { color: '#FFB4B4', fontSize: 13, textAlign: 'center' },
   screen: { flex: 1, backgroundColor: '#050A16' },
   content: { padding: 20, paddingTop: 50, gap: 12 },
   eyebrow: { color: '#7ED3FF', letterSpacing: 1.8, fontSize: 11, fontWeight: '700' },

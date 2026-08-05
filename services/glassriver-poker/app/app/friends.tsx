@@ -1,17 +1,80 @@
+import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { getJson } from './lib/api';
 
-const onlineFriends = [
-  { name: 'LinusRiver', status: 'Online at Aurora $0.05/$0.10' },
-  { name: 'GraceRiver', status: 'Playing tournament: Daily Royal Sprint' },
-  { name: 'NinaRiver', status: 'Open for private game invite' },
-];
+interface PlayerProfile {
+  userId: string;
+  username: string;
+  follows: string[];
+  online: boolean;
+}
 
-const clubs = [
-  { name: 'GlassRiver Founders Club', members: 84, event: 'Weekly Championship - Friday 8PM' },
-  { name: 'No-Rake Home Game', members: 26, event: 'Cash League - Wednesday 9PM' },
-];
+interface PokerClub {
+  id: string;
+  name: string;
+  members: string[];
+  weeklyTournamentName: string;
+}
+
+const USER_ID = 'p1';
 
 export default function FriendsScreen() {
+  const [follows, setFollows] = useState<PlayerProfile[]>([]);
+  const [clubs, setClubs] = useState<PokerClub[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function load(): Promise<void> {
+      try {
+        const [myProfileResponse, clubsResponse] = await Promise.all([
+          getJson<{ profile: PlayerProfile }>(`/api/profiles/${USER_ID}`),
+          getJson<{ clubs: PokerClub[] }>('/api/social/clubs'),
+        ]);
+
+        const followIds = myProfileResponse.profile.follows;
+        const followedProfiles = await Promise.all(
+          followIds.map(async (followId) => {
+            const profileResponse = await getJson<{ profile: PlayerProfile }>(`/api/profiles/${followId}`);
+            return profileResponse.profile;
+          })
+        );
+
+        if (!active) return;
+        setFollows(followedProfiles);
+        setClubs(clubsResponse.clubs);
+      } catch (loadError) {
+        if (!active) return;
+        setError(loadError instanceof Error ? loadError.message : 'Failed to load social data.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void load();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.loadingText}>Loading friends and clubs...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.errorText}>{error}</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.eyebrow}>POKER SOCIAL</Text>
@@ -20,22 +83,24 @@ export default function FriendsScreen() {
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Online Friends</Text>
-        {onlineFriends.map((friend) => (
-          <Text key={friend.name} style={styles.row}>
-            • {friend.name} - {friend.status}
+        {follows.map((friend) => (
+          <Text key={friend.userId} style={styles.row}>
+            • {friend.username} - {friend.online ? 'Online now' : 'Offline'}
           </Text>
         ))}
+        {follows.length === 0 ? <Text style={styles.row}>• Follow players to see their status here.</Text> : null}
       </View>
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Poker Clubs</Text>
         {clubs.map((club) => (
-          <View key={club.name} style={styles.clubRow}>
+          <View key={club.id} style={styles.clubRow}>
             <Text style={styles.clubName}>{club.name}</Text>
-            <Text style={styles.clubMeta}>{club.members} members</Text>
-            <Text style={styles.clubMeta}>{club.event}</Text>
+            <Text style={styles.clubMeta}>{club.members.length} members</Text>
+            <Text style={styles.clubMeta}>{club.weeklyTournamentName}</Text>
           </View>
         ))}
+        {clubs.length === 0 ? <Text style={styles.row}>• No clubs yet. Create one from social tools.</Text> : null}
       </View>
 
       <View style={styles.card}>
@@ -49,6 +114,9 @@ export default function FriendsScreen() {
 }
 
 const styles = StyleSheet.create({
+  centered: { flex: 1, backgroundColor: '#060816', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  loadingText: { color: '#C7D8FA', fontSize: 14 },
+  errorText: { color: '#FFB4B4', fontSize: 13, textAlign: 'center' },
   screen: { flex: 1, backgroundColor: '#060816' },
   content: { padding: 20, paddingTop: 50, gap: 12 },
   eyebrow: { color: '#7ED3FF', fontSize: 11, fontWeight: '700', letterSpacing: 1.8 },

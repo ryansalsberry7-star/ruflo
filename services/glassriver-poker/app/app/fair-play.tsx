@@ -1,14 +1,77 @@
+import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { getJson } from './lib/api';
 
-const protections = [
-  'Server-only card generation with cryptographic RNG',
-  'Verified Human badges and account-age trust signals',
-  'Bot detection, multi-account linking, and collusion monitoring',
-  'Transparent hand verification and replay after each hand',
-  'No undisclosed AI players in real-money tables',
-];
+interface TrustCenterResponse {
+  trustCenter: {
+    promise: string;
+    antiCheatArchitecture: string[];
+    protections: string[];
+  };
+  fairPlay: {
+    antiCheat: string[];
+  };
+}
+
+interface FairPlayResponse {
+  dealerControl: {
+    cardGeneration: string;
+    shuffling: string;
+    outcomes: string;
+  };
+}
 
 export default function FairPlayScreen() {
+  const [trustCenter, setTrustCenter] = useState<TrustCenterResponse['trustCenter'] | null>(null);
+  const [antiCheatTags, setAntiCheatTags] = useState<string[]>([]);
+  const [dealerControl, setDealerControl] = useState<FairPlayResponse['dealerControl'] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function load(): Promise<void> {
+      try {
+        const [center, fairPlay] = await Promise.all([
+          getJson<TrustCenterResponse>('/api/transparency/trust-center'),
+          getJson<FairPlayResponse>('/api/fair-play'),
+        ]);
+
+        if (!active) return;
+        setTrustCenter(center.trustCenter);
+        setAntiCheatTags(center.fairPlay.antiCheat);
+        setDealerControl(fairPlay.dealerControl);
+      } catch (loadError) {
+        if (!active) return;
+        setError(loadError instanceof Error ? loadError.message : 'Failed to load trust center.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void load();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.loadingText}>Loading trust center...</Text>
+      </View>
+    );
+  }
+
+  if (error || !trustCenter || !dealerControl) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.errorText}>{error ?? 'Trust center unavailable.'}</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.eyebrow}>TRUST CENTER</Text>
@@ -16,7 +79,7 @@ export default function FairPlayScreen() {
       <Text style={styles.subtitle}>Built to make players trust the game, not just the marketing.</Text>
 
       <View style={styles.promiseCard}>
-        <Text style={styles.promiseTitle}>No bots. No house players. Real opponents.</Text>
+        <Text style={styles.promiseTitle}>{trustCenter.promise}</Text>
         <Text style={styles.promiseBody}>
           Every hand is dealt by the server-side digital dealer. Outcomes are never controlled by clients or hidden actors.
         </Text>
@@ -32,24 +95,35 @@ export default function FairPlayScreen() {
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Anti-Cheat Architecture</Text>
-        {protections.map((item) => (
+        {trustCenter.antiCheatArchitecture.map((item) => (
           <Text key={item} style={styles.row}>
             • {item}
+          </Text>
+        ))}
+        {antiCheatTags.map((item) => (
+          <Text key={item} style={styles.row}>
+            • Detection pipeline: {item}
           </Text>
         ))}
       </View>
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>How Hand Verification Works</Text>
-        <Text style={styles.row}>• Dealer creates deck commitment and action timeline.</Text>
-        <Text style={styles.row}>• Every action is timestamped and attached to street state.</Text>
-        <Text style={styles.row}>• Completed hands remain replayable for post-game review.</Text>
+        <Text style={styles.row}>• Dealer control: card generation is {dealerControl.cardGeneration}.</Text>
+        <Text style={styles.row}>• Shuffle authority: {dealerControl.shuffling}.</Text>
+        <Text style={styles.row}>• Outcome authority: {dealerControl.outcomes}.</Text>
+        {trustCenter.protections.map((item) => (
+          <Text key={item} style={styles.row}>• {item}</Text>
+        ))}
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  centered: { flex: 1, backgroundColor: '#060816', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  loadingText: { color: '#C7D8FA', fontSize: 14 },
+  errorText: { color: '#FFB4B4', fontSize: 13, textAlign: 'center' },
   screen: { flex: 1, backgroundColor: '#060816' },
   content: { padding: 20, paddingTop: 50, gap: 12 },
   eyebrow: { color: '#7ED3FF', fontSize: 11, fontWeight: '700', letterSpacing: 1.8 },
