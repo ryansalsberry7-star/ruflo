@@ -139,6 +139,26 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
     return;
   }
 
+  if (method === 'GET' && pathname === '/api/fair-play') {
+    sendJson(res, 200, {
+      zeroRake: services.poker.getZeroRakePolicy(),
+      dealerControl: {
+        cardGeneration: 'server-only',
+        shuffling: 'server-crypto-rng',
+        outcomes: 'server-only',
+      },
+      note: 'This platform provides transparent hand verification records. It does not claim provably fair cryptographic proofs.',
+    });
+    return;
+  }
+
+  if (method === 'GET' && pathname === '/api/spectator/featured-tables') {
+    sendJson(res, 200, {
+      featuredTables: services.poker.listFeaturedTables(),
+    });
+    return;
+  }
+
   if (method === 'GET' && pathname.startsWith('/api/tournaments/') && pathname.endsWith('/registrations')) {
     const tournamentId = pathname.split('/')[3] ?? '';
     const registrations = services.poker.listTournamentRegistrations(tournamentId);
@@ -149,6 +169,22 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, services:
   if (method === 'GET' && pathname.startsWith('/api/tables/') && pathname.endsWith('/hand-history')) {
     const tableId = pathname.split('/')[3] ?? '';
     sendJson(res, 200, { tableId, history: services.poker.getHandHistory(tableId) });
+    return;
+  }
+
+  if (method === 'GET' && pathname.startsWith('/api/tables/') && pathname.includes('/replay/')) {
+    const parts = pathname.split('/');
+    const tableId = parts[3] ?? '';
+    const handId = parts[5] ?? '';
+    const replay = services.poker.getHandReplay(tableId, handId);
+    sendJson(res, 200, replay);
+    return;
+  }
+
+  if (method === 'GET' && pathname.startsWith('/api/hands/') && pathname.endsWith('/verification')) {
+    const handId = pathname.split('/')[3] ?? '';
+    const verification = services.poker.getHandVerification(handId);
+    sendJson(res, 200, { verification });
     return;
   }
 

@@ -1,3 +1,5 @@
+import { randomInt } from 'node:crypto';
+
 export type Suit = 'clubs' | 'diamonds' | 'hearts' | 'spades';
 export type Rank = '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | 'T' | 'J' | 'Q' | 'K' | 'A';
 
@@ -68,7 +70,15 @@ function makeDeck(): Card[] {
       deck.push({ suit, rank, id: `${rank}${suit[0]}` });
     }
   }
-  return deck.sort(() => Math.random() - 0.5);
+
+  for (let i = deck.length - 1; i > 0; i -= 1) {
+    const j = randomInt(0, i + 1);
+    const tmp = deck[i];
+    deck[i] = deck[j];
+    deck[j] = tmp;
+  }
+
+  return deck;
 }
 
 export function createTable(input: CreateTableInput): TableState {

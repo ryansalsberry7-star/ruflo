@@ -112,3 +112,37 @@ test('registers players into tournaments and exposes registration list', async (
     await app.stop();
   }
 });
+
+test('serves fair-play verification and replay payloads for completed hands', async () => {
+  const services = buildDefaultServices();
+  const app = createPlatformServer(services);
+  const port = await app.start(0);
+
+  try {
+    services.poker.applyPlayerAction('cash-aurora', 'p1', 'bet', 10);
+    services.poker.applyPlayerAction('cash-aurora', 'p2', 'call', 10);
+    services.poker.advanceStreet('cash-aurora');
+    services.poker.advanceStreet('cash-aurora');
+    services.poker.advanceStreet('cash-aurora');
+    const settled = services.poker.settleHand('cash-aurora');
+
+    const verificationRes = await fetch(`http://127.0.0.1:${port}/api/hands/${settled.handId}/verification`);
+    const verificationPayload = await verificationRes.json();
+    assert.equal(verificationRes.status, 200);
+    assert.equal(verificationPayload.verification.handId, settled.handId);
+    assert.equal(verificationPayload.verification.deckGeneration.source, 'server-crypto-rng');
+
+    const replayRes = await fetch(`http://127.0.0.1:${port}/api/tables/cash-aurora/replay/${settled.handId}`);
+    const replayPayload = await replayRes.json();
+    assert.equal(replayRes.status, 200);
+    assert.ok(Array.isArray(replayPayload.events));
+    assert.ok(replayPayload.events.length > 0);
+
+    const spectatorRes = await fetch(`http://127.0.0.1:${port}/api/spectator/featured-tables`);
+    const spectatorPayload = await spectatorRes.json();
+    assert.equal(spectatorRes.status, 200);
+    assert.ok(Array.isArray(spectatorPayload.featuredTables));
+  } finally {
+    await app.stop();
+  }
+});

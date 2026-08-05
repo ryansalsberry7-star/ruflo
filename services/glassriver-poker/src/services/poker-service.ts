@@ -11,6 +11,7 @@ import {
 } from '../poker-engine.js';
 import type { StakeLevel, TournamentListing, ZeroRakePolicy } from '../contracts.js';
 import { STAKE_LEVELS, TOURNAMENT_LISTINGS, ZERO_RAKE_POLICY } from '../contracts.js';
+import { DealerService, type DealerHandState, type HandVerificationRecord } from './dealer-service.js';
 
 export interface SettledPayout {
   playerId: string;
@@ -41,11 +42,22 @@ export interface TournamentRegistration {
   registeredAt: string;
 }
 
+export interface FeaturedTable {
+  tableId: string;
+  stakeLabel: string;
+  playersSeated: number;
+  spectators: number;
+}
+
 export class PokerService {
   private readonly tables = new Map<string, TableState>();
   private readonly handHistory = new Map<string, SettledHand[]>();
   private readonly tablePrivacy = new Map<string, boolean>();
   private readonly tournamentRegistrations = new Map<string, Map<string, string>>();
+  private readonly dealer = new DealerService();
+  private readonly activeDealerHands = new Map<string, DealerHandState>();
+  private readonly verificationRecords = new Map<string, HandVerificationRecord>();
+  private readonly tableHandIndex = new Map<string, string[]>();
 
   createCashTable(tableId: string, stakeId: string, players: Array<{ id: string; name: string; stack: number }>, isPrivate = false): TableState {
     const stake = STAKE_LEVELS.find((entry) => entry.id === stakeId);
@@ -60,6 +72,7 @@ export class PokerService {
 
     this.tables.set(tableId, table);
     this.tablePrivacy.set(tableId, isPrivate);
+    this.startDealerHandForTable(tableId);
     this.getOrCreateListing(tableId, stake, isPrivate);
     return table;
   }
@@ -89,6 +102,10 @@ export class PokerService {
     }
 
     this.tables.set(tableId, next);
+    if (next.actionHistory.length === 0 && next.currentStreet === 'preflop') {
+      this.startDealerHandForTable(tableId);
+    }
+
     return next;
   }
 
@@ -119,6 +136,18 @@ export class PokerService {
     });
   }
 
+  listFeaturedTables(limit = 5): FeaturedTable[] {
+    return this.listCashGames()
+      .sort((a, b) => b.playersSeated - a.playersSeated)
+      .slice(0, limit)
+      .map((table, index) => ({
+        tableId: table.id,
+        stakeLabel: `$${table.stake.smallBlind}/$${table.stake.bigBlind}`,
+        playersSeated: table.playersSeated,
+        spectators: 30 + table.playersSeated * 3 + index,
+      }));
+  }
+
   listTournaments(): TournamentListing[] {
     return TOURNAMENT_LISTINGS.map((listing) => {
       const registrations = this.tournamentRegistrations.get(listing.id)?.size ?? 0;
@@ -135,6 +164,18 @@ export class PokerService {
     let next = applyAction(current, action);
     next = this.withAdvancedTurn(next, playerId);
     this.tables.set(tableId, next);
+
+    const hand = this.activeDealerHands.get(tableId);
+    if (hand) {
+      const tracked = this.dealer.recordAction(hand, {
+        playerId,
+        type,
+        amount,
+        street: next.currentStreet,
+      });
+      this.activeDealerHands.set(tableId, tracked);
+    }
+
     return next;
   }
 
@@ -144,6 +185,10 @@ export class PokerService {
 
   getCurrentTurn(tableId: string): string | null {
     return this.getTable(tableId).currentTurn;
+  }
+
+  getActiveHandId(tableId: string): string | null {
+    return this.activeDealerHands.get(tableId)?.handId ?? null;
   }
 
   advanceStreet(tableId: string): TableState {
@@ -160,6 +205,23 @@ export class PokerService {
       next = { ...current, currentStreet: 'showdown' };
     }
 
+    const hand = this.activeDealerHands.get(tableId);
+    if (hand) {
+      if (next.currentStreet === 'flop') {
+        const withFlop = this.dealer.dealFlop(hand);
+        this.activeDealerHands.set(tableId, withFlop);
+        next = { ...next, communityCards: [...withFlop.communityCards] };
+      } else if (next.currentStreet === 'turn') {
+        const withTurn = this.dealer.dealTurn(hand);
+        this.activeDealerHands.set(tableId, withTurn);
+        next = { ...next, communityCards: [...withTurn.communityCards] };
+      } else if (next.currentStreet === 'river') {
+        const withRiver = this.dealer.dealRiver(hand);
+        this.activeDealerHands.set(tableId, withRiver);
+        next = { ...next, communityCards: [...withRiver.communityCards] };
+      }
+    }
+
     this.tables.set(tableId, next);
     return next;
   }
@@ -171,9 +233,16 @@ export class PokerService {
     const payoutEach = winners.length > 0 ? Number((showdown.pot / winners.length).toFixed(2)) : 0;
     const payouts: SettledPayout[] = winners.map((playerId) => ({ playerId, amount: payoutEach }));
 
+    const hand = this.activeDealerHands.get(tableId) ?? this.startDealerHandForTable(tableId);
+    const verification = this.dealer.completeHand(hand, {
+      pot: showdown.pot,
+      handRank: showdown.handRank,
+      winners,
+    });
+
     const settled: SettledHand = {
       tableId,
-      handId: `hand-${Date.now()}`,
+      handId: verification.handId,
       zeroRakePolicy: ZERO_RAKE_POLICY,
       totalPot: showdown.pot,
       rakeTaken: 0,
@@ -181,13 +250,38 @@ export class PokerService {
       completedAt: new Date().toISOString(),
     };
 
+    this.verificationRecords.set(verification.handId, verification);
+    const byTable = this.tableHandIndex.get(tableId) ?? [];
+    this.tableHandIndex.set(tableId, [...byTable, verification.handId]);
+
     const history = this.handHistory.get(tableId) ?? [];
     this.handHistory.set(tableId, [...history, settled]);
+
+    this.resetTableForNextHand(tableId);
+    this.startDealerHandForTable(tableId);
+
     return settled;
   }
 
   getHandHistory(tableId: string): SettledHand[] {
     return this.handHistory.get(tableId) ?? [];
+  }
+
+  getHandVerification(handId: string): HandVerificationRecord {
+    const record = this.verificationRecords.get(handId);
+    if (!record) throw new Error('Hand verification record not found');
+    return record;
+  }
+
+  getHandReplay(tableId: string, handId: string): { tableId: string; handId: string; events: HandVerificationRecord['replay'] } {
+    const index = this.tableHandIndex.get(tableId) ?? [];
+    if (!index.includes(handId)) throw new Error('Hand does not belong to the specified table');
+    const verification = this.getHandVerification(handId);
+    return {
+      tableId,
+      handId,
+      events: verification.replay,
+    };
   }
 
   getZeroRakePolicy(): ZeroRakePolicy {
@@ -267,5 +361,52 @@ export class PokerService {
     }
 
     return -1;
+  }
+
+  private startDealerHandForTable(tableId: string): DealerHandState {
+    const table = this.getTable(tableId);
+    const players = table.players
+      .filter((entry) => entry.stack > 0)
+      .map((entry) => entry.id);
+
+    const hand = this.dealer.startHand({
+      tableId,
+      players,
+      buttonIndex: table.buttonIndex,
+      smallBlind: table.smallBlind,
+      bigBlind: table.bigBlind,
+    });
+
+    this.activeDealerHands.set(tableId, hand);
+    return hand;
+  }
+
+  private resetTableForNextHand(tableId: string): void {
+    const table = this.getTable(tableId);
+    const nextButton = table.players.length === 0 ? 0 : (table.buttonIndex + 1) % table.players.length;
+    const activePlayers = table.players.filter((entry) => entry.stack > 0);
+    const currentTurn = activePlayers[0]?.id ?? null;
+
+    const next: TableState = {
+      ...table,
+      buttonIndex: nextButton,
+      currentStreet: 'preflop',
+      pot: 0,
+      sidePots: [],
+      communityCards: [],
+      actionHistory: [],
+      currentTurn,
+      completed: false,
+      players: table.players.map((entry, idx) => ({
+        ...entry,
+        folded: false,
+        allIn: false,
+        isDealer: idx === nextButton,
+        isSmallBlind: idx === ((nextButton + 1) % Math.max(table.players.length, 1)),
+        isBigBlind: idx === ((nextButton + 2) % Math.max(table.players.length, 1)),
+      })),
+    };
+
+    this.tables.set(tableId, next);
   }
 }

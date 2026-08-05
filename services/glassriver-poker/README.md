@@ -12,6 +12,7 @@ GlassRiver is a premium, zero-rake poker platform concept built as a production-
 ## Architecture
 
 - Poker Engine: table state, dealing, action handling, and showdown readiness
+- Dealer Service: secure deck creation/shuffle, burn/deal sequencing, showdown record generation
 - Wallet Service: virtual credits, immutable ledger entries, and balance summaries
 - Payment Service: transparent deposit/withdrawal fee quotes and transaction state machine
 - Compliance Service: responsible gaming profile, self-exclusion, and real-money gate stubs
@@ -34,13 +35,17 @@ The server boots with a seeded table and exposes a WebSocket endpoint at `ws://l
 ### Phase 2 API Endpoints
 
 - `GET /api/health`
+- `GET /api/fair-play`
 - `GET /api/lobby/cash-games`
 - `GET /api/lobby/tournaments`
+- `GET /api/spectator/featured-tables`
 - `POST /api/tournaments/:tournamentId/register`
 - `GET /api/tournaments/:tournamentId/registrations`
 - `POST /api/tables/:tableId/join`
 - `POST /api/tables/:tableId/action`
 - `GET /api/tables/:tableId/hand-history`
+- `GET /api/tables/:tableId/replay/:handId`
+- `GET /api/hands/:handId/verification`
 - `GET /api/wallet/:userId`
 - `POST /api/sessions/token`
 - `POST /api/sessions/reconnect`
@@ -48,6 +53,19 @@ The server boots with a seeded table and exposes a WebSocket endpoint at `ws://l
 Realtime gameplay is available at `ws://localhost:4040/ws` with server-authoritative action handling and reconnect token recovery.
 
 Turn control includes per-turn action countdown timers. If the current player does not act before timeout, the server force-folds the player and advances the turn.
+
+### Fair Play Verification Records
+
+Each completed hand stores a verification payload containing:
+
+- unique hand ID and timestamps
+- table ID and participating player list
+- complete action timeline
+- secure deck commitment hash and deck fingerprint hash
+- burn/reveal sequence and final outcome
+- replay event timeline for spectator and review experiences
+
+The platform intentionally avoids claiming "provably fair" cryptographic proofs. It provides transparent server-side verification records designed for future independent auditing.
 
 ## Validation
 
@@ -62,6 +80,7 @@ Current test coverage validates:
 
 - poker engine behavior and table progression
 - zero-rake settlement guarantees
+- dealer service secure dealing and fair-play verification records
 - wallet ledger integrity
 - payment fee transparency
 - compliance real-money gating stubs
