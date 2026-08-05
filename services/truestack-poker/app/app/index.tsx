@@ -13,10 +13,21 @@ interface HighHandEntry {
   points: number;
 }
 
+interface QuickLink {
+  href: '/fair-play' | '/compliance' | '/premium';
+  label: string;
+  caption: string;
+}
+
+const QUICK_LINKS: QuickLink[] = [
+  { href: '/fair-play', label: 'Fair play center', caption: 'Verify any settled hand' },
+  { href: '/compliance', label: 'Real-money account', caption: 'Verification & funding' },
+  { href: '/premium', label: 'High Hand Club', caption: 'Daily & all-time rewards' },
+];
+
 export default function HomeScreen() {
   const { user, loading, logout } = useAuth();
   const [dailyLeader, setDailyLeader] = useState<HighHandEntry | null>(null);
-  const [allTimeLeader, setAllTimeLeader] = useState<HighHandEntry | null>(null);
   const activeCharacter = getPlayerCharacter(user?.playerCharacter);
 
   useEffect(() => {
@@ -24,10 +35,9 @@ export default function HomeScreen() {
 
     async function loadLeaders(): Promise<void> {
       try {
-        const response = await getJson<{ leaderboards: { day: HighHandEntry[]; allTime: HighHandEntry[] } }>('/api/high-hands/leaderboards');
+        const response = await getJson<{ leaderboards: { day: HighHandEntry[] } }>('/api/high-hands/leaderboards');
         if (!active) return;
         setDailyLeader(response.leaderboards.day[0] ?? null);
-        setAllTimeLeader(response.leaderboards.allTime[0] ?? null);
       } catch {
         if (!active) return;
       }
@@ -41,111 +51,83 @@ export default function HomeScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <View style={styles.heroCard}>
+      <View style={styles.hero}>
         <Text style={styles.eyebrow}>ZERO-RAKE POKER</Text>
-        <Text style={styles.title}>TRUE STACK Poker</Text>
-        <Text style={styles.subtitle}>A warmer, table-first mobile shell for fair-play poker: no house edge, no bot opponents, and no percentage taken from pots.</Text>
-        <View style={styles.heroRow}>
-          <View style={[styles.heroAvatar, user ? { backgroundColor: activeCharacter.aura, borderColor: activeCharacter.accent } : styles.heroAvatarIdle]}>
-            <Text style={styles.heroAvatarEmoji}>{user ? activeCharacter.emoji : '\u2660'}</Text>
-          </View>
-          <View style={styles.heroStats}>
-            <Text style={styles.heroLabel}>{user ? activeCharacter.name : 'Guest seat open'}</Text>
-            <Text style={styles.heroMeta}>{user ? activeCharacter.title : 'Sign in to claim a character and trust shield.'}</Text>
-            {user?.trust.verifiedHuman ? <VerifiedHumanBadge /> : null}
-          </View>
-        </View>
+        <Text style={styles.title}>TRUE STACK</Text>
+        <Text style={styles.subtitle}>No house edge. No bots. No cut of the pot.</Text>
       </View>
 
-      <View style={styles.sessionCard}>
-        <Text style={styles.cardTitle}>Active player</Text>
-        <Text style={styles.metric}>{loading ? 'Loading session...' : user ? `${user.username} (${user.userId})` : 'No active session'}</Text>
-        <Text style={styles.metric}>{user ? `Trust score ${user.trust.trustScore} • ${user.trust.verifiedHuman ? 'Verified Human' : 'Unverified'}` : 'Sign in or create an account to personalize coaching and matchmaking.'}</Text>
-        <View style={styles.row}>
-          <Link href="/login" asChild>
-            <Pressable style={styles.secondaryButton}>
-              <Text style={styles.secondaryText}>Login</Text>
-            </Pressable>
-          </Link>
-          <Link href="/register" asChild>
-            <Pressable style={styles.secondaryButton}>
-              <Text style={styles.secondaryText}>Register</Text>
-            </Pressable>
-          </Link>
+      <View style={styles.accountCard}>
+        <View style={styles.accountRow}>
+          <View style={[styles.avatar, user ? { backgroundColor: activeCharacter.aura, borderColor: activeCharacter.accent } : styles.avatarIdle]}>
+            <Text style={styles.avatarEmoji}>{user ? activeCharacter.emoji : '♠'}</Text>
+          </View>
+          <View style={styles.accountInfo}>
+            <Text style={styles.accountName}>{loading ? 'Loading…' : user ? user.username : 'Guest'}</Text>
+            <Text style={styles.accountMeta}>
+              {loading ? ' ' : user ? `Trust score ${user.trust.trustScore}` : 'Sign in to play with your table identity'}
+            </Text>
+          </View>
+          {user?.trust.verifiedHuman ? <VerifiedHumanBadge /> : null}
         </View>
+
         {user ? (
-          <Pressable style={styles.inlineButton} onPress={() => void logout()}>
-            <Text style={styles.inlineButtonText}>Sign out on this device</Text>
+          <Pressable style={styles.textButton} onPress={() => void logout()}>
+            <Text style={styles.textButtonLabel}>Sign out</Text>
           </Pressable>
-        ) : null}
+        ) : (
+          <View style={styles.row}>
+            <Link href="/login" asChild>
+              <Pressable style={styles.secondaryButton}>
+                <Text style={styles.secondaryText}>Sign in</Text>
+              </Pressable>
+            </Link>
+            <Link href="/register" asChild>
+              <Pressable style={styles.secondaryButton}>
+                <Text style={styles.secondaryText}>Create account</Text>
+              </Pressable>
+            </Link>
+          </View>
+        )}
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Live network status</Text>
-        <Text style={styles.metric}>42 active tables • 516 players online</Text>
-        <Text style={styles.metric}>Median action latency: 68ms</Text>
-        <Text style={styles.metric}>Dealer mode: server authoritative</Text>
-        <Text style={styles.metric}>Environment: play-money beta, real-money mode disabled</Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Trust center</Text>
-        <Text style={styles.metric}>Hand verification available after every settled hand.</Text>
-        <Link href="/fair-play" asChild>
-          <Pressable style={styles.inlineButton}>
-            <Text style={styles.inlineButtonText}>Open fair play center</Text>
+      <Link href="/lobby" asChild>
+        <Pressable style={styles.primaryButton}>
+          <Text style={styles.primaryText}>Enter poker lobby</Text>
+        </Pressable>
+      </Link>
+      <View style={styles.row}>
+        <Link href="/wallet" asChild>
+          <Pressable style={styles.secondaryButton}>
+            <Text style={styles.secondaryText}>Wallet</Text>
+          </Pressable>
+        </Link>
+        <Link href="/table" asChild>
+          <Pressable style={styles.secondaryButton}>
+            <Text style={styles.secondaryText}>Quick seat</Text>
           </Pressable>
         </Link>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Real-money account</Text>
-        <Text style={styles.metric}>Identity verification, deposits, withdrawals, and responsible-gaming limits.</Text>
-        <Link href="/compliance" asChild>
-          <Pressable style={styles.inlineButton}>
-            <Text style={styles.inlineButtonText}>Manage verification &amp; funding</Text>
-          </Pressable>
-        </Link>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>High Hand Club</Text>
-        <Text style={styles.metric}>
-          Daily: {dailyLeader ? `${dailyLeader.playerName} • ${dailyLeader.handName} • ${dailyLeader.points} pts` : 'No qualifying hand yet today.'}
-        </Text>
-        <Text style={styles.metric}>
-          All-time: {allTimeLeader ? `${allTimeLeader.playerName} • ${allTimeLeader.handName} • ${allTimeLeader.tableId}` : 'Leaderboard initializing.'}
-        </Text>
-        <Link href="/premium" asChild>
-          <Pressable style={styles.inlineButton}>
-            <Text style={styles.inlineButtonText}>Open High Hand rewards</Text>
-          </Pressable>
-        </Link>
-      </View>
-
-      <View style={styles.actions}>
-        <Link href="/lobby" asChild>
-          <Pressable style={styles.primaryButton}>
-            <Text style={styles.primaryText}>Enter poker lobby</Text>
-          </Pressable>
-        </Link>
-        <View style={styles.row}>
-          <Link href="/wallet" asChild>
-            <Pressable style={styles.secondaryButton}>
-              <Text style={styles.secondaryText}>Wallet</Text>
+      <View style={styles.linkCard}>
+        {QUICK_LINKS.map((link, index) => (
+          <Link key={link.href} href={link.href} asChild>
+            <Pressable style={[styles.linkRow, index === QUICK_LINKS.length - 1 && styles.linkRowLast]}>
+              <View>
+                <Text style={styles.linkLabel}>{link.label}</Text>
+                <Text style={styles.linkCaption}>
+                  {link.href === '/premium' && dailyLeader
+                    ? `Today: ${dailyLeader.playerName} • ${dailyLeader.points} pts`
+                    : link.caption}
+                </Text>
+              </View>
+              <Text style={styles.linkChevron}>{'›'}</Text>
             </Pressable>
           </Link>
-          <Link href="/table" asChild>
-            <Pressable style={styles.secondaryButton}>
-              <Text style={styles.secondaryText}>Quick seat</Text>
-            </Pressable>
-          </Link>
-        </View>
+        ))}
       </View>
 
-      <View style={styles.footerRow}>
-        <Text style={styles.footerText}>Play-money beta • No rake • No house edge • Verified fair-play logs</Text>
-      </View>
+      <Text style={styles.footerText}>Play-money beta • Server-authoritative dealing • Verified fair-play logs</Text>
     </ScrollView>
   );
 }
@@ -156,18 +138,11 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-    paddingTop: 40,
-    paddingBottom: 24,
-    gap: 16,
+    paddingTop: 32,
+    paddingBottom: 28,
+    gap: 14,
   },
-  heroCard: {
-    gap: 10,
-    backgroundColor: '#2A1118',
-    borderRadius: 30,
-    borderWidth: 1,
-    borderColor: '#5E3032',
-    padding: 22,
-  },
+  hero: { gap: 6, marginBottom: 4 },
   eyebrow: {
     color: '#F1C46E',
     fontSize: 12,
@@ -176,82 +151,43 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#FFF4E7',
-    fontSize: 42,
+    fontSize: 36,
     fontWeight: '900',
+    letterSpacing: 0.5,
   },
   subtitle: {
-    color: '#D8C4BA',
-    fontSize: 15,
-    lineHeight: 24,
+    color: '#B99D93',
+    fontSize: 14,
+    lineHeight: 20,
   },
-  heroRow: { flexDirection: 'row', gap: 14, alignItems: 'center', marginTop: 4 },
-  heroAvatar: {
-    width: 78,
-    height: 78,
-    borderRadius: 39,
+  accountCard: {
+    backgroundColor: '#221017',
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#4B2630',
+    gap: 14,
+  },
+  accountRow: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+  avatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heroAvatarIdle: {
+  avatarIdle: {
     backgroundColor: '#3C1D26',
     borderColor: '#7A4A53',
   },
-  heroAvatarEmoji: { color: '#FFF4E7', fontSize: 34 },
-  heroStats: { flex: 1, gap: 4 },
-  heroLabel: { color: '#FFF4E7', fontSize: 20, fontWeight: '800' },
-  heroMeta: { color: '#D8C4BA', fontSize: 13, lineHeight: 18 },
-  card: {
-    backgroundColor: '#221017',
-    borderRadius: 24,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#4B2630',
-    gap: 10,
-  },
-  sessionCard: {
-    backgroundColor: '#241319',
-    borderRadius: 24,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#6A4047',
-    gap: 10,
-  },
-  cardTitle: {
-    color: '#FFF4E7',
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  metric: {
-    color: '#F0DED0',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  inlineButton: {
-    marginTop: 2,
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: '#7A4A53',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    backgroundColor: '#3C1D26',
-  },
-  inlineButtonText: {
-    color: '#FFF0D8',
-    fontWeight: '800',
-    fontSize: 12,
-  },
-  actions: {
-    gap: 12,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 10,
-  },
+  avatarEmoji: { color: '#FFF4E7', fontSize: 24 },
+  accountInfo: { flex: 1, gap: 2 },
+  accountName: { color: '#FFF4E7', fontSize: 17, fontWeight: '800' },
+  accountMeta: { color: '#B99D93', fontSize: 13 },
   primaryButton: {
     backgroundColor: '#F1C46E',
-    borderRadius: 16,
+    borderRadius: 14,
     alignItems: 'center',
     paddingVertical: 16,
   },
@@ -260,27 +196,50 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '900',
   },
+  row: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   secondaryButton: {
     flex: 1,
-    borderColor: '#7A4A53',
+    borderColor: '#4B2630',
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: 14,
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingVertical: 13,
     backgroundColor: '#221017',
   },
   secondaryText: {
     color: '#FFF4E7',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
   },
-  footerRow: {
-    alignItems: 'center',
-    paddingTop: 4,
+  textButton: { alignSelf: 'flex-start' },
+  textButtonLabel: { color: '#D89A8E', fontSize: 13, fontWeight: '700' },
+  linkCard: {
+    backgroundColor: '#221017',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#4B2630',
+    overflow: 'hidden',
   },
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#341A21',
+  },
+  linkRowLast: { borderBottomWidth: 0 },
+  linkLabel: { color: '#FFF4E7', fontSize: 15, fontWeight: '700' },
+  linkCaption: { color: '#8C7069', fontSize: 12, marginTop: 2 },
+  linkChevron: { color: '#7A4A53', fontSize: 20, fontWeight: '700' },
   footerText: {
-    color: '#A98B83',
-    fontSize: 12,
+    color: '#7A5F58',
+    fontSize: 11,
     textAlign: 'center',
+    marginTop: 2,
   },
 });
