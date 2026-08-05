@@ -2,9 +2,12 @@ import { Link } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
+import { DealerStage } from './components/live-dealer/DealerStage';
+import { useDealerController } from './components/live-dealer/dealerController';
 import { useAuth } from './lib/auth';
 import { getJson, postJson, resolveWebSocketBaseUrl } from './lib/api';
 import { getPlayerCharacter, resolveCharacterId } from './lib/playerIdentity';
+import { useTablePreferences } from './lib/tablePreferences';
 
 interface TablePlayer {
   id: string;
@@ -230,14 +233,13 @@ function SeatPod({ player, isHero, isTurn, onSit, seated, characterId, verifiedH
 
 export default function TableScreen() {
   const { user, authToken, loading: authLoading } = useAuth();
+  const { preferences, setPreferences } = useTablePreferences();
   const [table, setTable] = useState<TableState | null>(null);
   const [betValue, setBetValue] = useState(20);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [heroSlot, setHeroSlot] = useState<number | null>(null);
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const [hapticsEnabled, setHapticsEnabled] = useState(true);
   const [playerProfiles, setPlayerProfiles] = useState<Record<string, PlayerIdentityProfile>>({});
   const [playerTrust, setPlayerTrust] = useState<Record<string, PlayerTrustSummary>>({});
   const reconnectTokenRef = useRef<string | null>(null);
@@ -258,7 +260,6 @@ export default function TableScreen() {
 
   useEffect(() => {
     if (!user || !authToken) return;
-    let active = true;
     manualCloseRef.current = false;
 
     const connect = async (useReconnectToken = false): Promise<void> => {
@@ -304,7 +305,7 @@ export default function TableScreen() {
 
         if (message.event === 'turn_action_timed_out' || message.event === 'player_timed_out') {
           setCountdown(null);
-          void triggerFeedback(hapticsEnabled, 'warning');
+          void triggerFeedback(preferences.hapticFeedbackEnabled, 'warning');
           return;
         }
 
@@ -328,12 +329,11 @@ export default function TableScreen() {
     void connect();
 
     return () => {
-      active = false;
       manualCloseRef.current = true;
       socketRef.current?.close();
       socketRef.current = null;
     };
-  }, [authToken, user, wsUrl, hapticsEnabled]);
+  }, [authToken, preferences.hapticFeedbackEnabled, user, wsUrl]);
 
   useEffect(() => {
     if (countdown === null) return;
@@ -420,7 +420,7 @@ export default function TableScreen() {
         },
       })
     );
-    void triggerFeedback(hapticsEnabled, type === 'all-in' ? 'success' : 'selection');
+    void triggerFeedback(preferences.hapticFeedbackEnabled, type === 'all-in' ? 'success' : 'selection');
   }
 
   const mySeat = table?.players.find((player) => player.id === user?.userId) ?? null;
@@ -430,7 +430,7 @@ export default function TableScreen() {
     if (mySeat) {
       // Already seated: reposition the hero visually to the tapped open seat.
       setHeroSlot(index);
-      void triggerFeedback(hapticsEnabled, 'selection');
+      void triggerFeedback(preferences.hapticFeedbackEnabled, 'selection');
       return;
     }
     try {
@@ -442,7 +442,7 @@ export default function TableScreen() {
       setHeroSlot(index);
       if (response?.table) setTable(response.table);
       setError(null);
-      void triggerFeedback(hapticsEnabled, 'success');
+      void triggerFeedback(preferences.hapticFeedbackEnabled, 'success');
     } catch (sitError) {
       setError(sitError instanceof Error ? sitError.message : 'Failed to take seat.');
     }
@@ -473,6 +473,7 @@ export default function TableScreen() {
   const tableHeight = Math.round(tableWidth * 0.72);
   const seated = !!mySeat;
   const heroCharacter = getPlayerCharacter(user.playerCharacter);
+  const dealerCue = useDealerController(table, connected);
   const effectiveHeroSlot = seated ? heroSlot ?? 0 : null;
   const opponents = (table?.players ?? []).filter((player) => player.id !== user.userId);
   let oppCursor = 0;
@@ -482,6 +483,13 @@ export default function TableScreen() {
     if (player) oppCursor += 1;
     return { slot, player, isHero: false };
   });
+  const occupiedSeatTargets = seatAssignments
+    .filter((assignment): assignment is typeof assignment & { player: TablePlayer } => !!assignment.player)
+    .map(({ slot, player }) => ({
+      id: player.id,
+      x: slot.x * tableWidth,
+      y: slot.y * tableHeight,
+    }));
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -553,11 +561,25 @@ export default function TableScreen() {
             <Text style={feltStyles.brandSub}>{'\u2660  P O K E R  \u2660'}</Text>
           </View>
 
-          <View style={[feltStyles.dealer, { left: tableWidth * 0.5 - 34, top: tableHeight * 0.26 - 26 }]}>
-            <View style={feltStyles.dealerAvatar}>
-              <Text style={feltStyles.dealerEmoji}>{'\uD83E\uDD35'}</Text>
-            </View>
-            <Text style={feltStyles.dealerLabel}>Dealer</Text>
+          <View
+            style={[
+              feltStyles.dealerStageAnchor,
+              {
+                left: tableWidth * 0.19,
+                top: tableHeight * 0.02,
+                width: tableWidth * 0.62,
+                height: tableHeight * 0.34,
+              },
+            ]}
+          >
+            <DealerStage
+              cue={dealerCue}
+              preferences={preferences}
+              viewportWidth={windowWidth}
+              tableWidth={tableWidth}
+              tableHeight={tableHeight}
+              seatTargets={occupiedSeatTargets}
+            />
           </View>
 
           <View style={[feltStyles.board, { top: tableHeight * 0.44, width: tableWidth }]}>
@@ -599,12 +621,20 @@ export default function TableScreen() {
 
       <View style={styles.audioPanel}>
         <View style={styles.audioRow}>
+          <Text style={styles.audioLabel}>3D dealer</Text>
+          <Switch value={preferences.liveDealerEnabled} onValueChange={(value) => setPreferences({ liveDealerEnabled: value })} trackColor={{ false: '#5D3A44', true: '#F1C46E' }} />
+        </View>
+        <View style={styles.audioRow}>
           <Text style={styles.audioLabel}>Dealer & table sounds</Text>
-          <Switch value={soundEnabled} onValueChange={setSoundEnabled} trackColor={{ false: '#35435F', true: '#3E8FFF' }} />
+          <Switch value={preferences.soundEffectsEnabled} onValueChange={(value) => setPreferences({ soundEffectsEnabled: value })} trackColor={{ false: '#5D3A44', true: '#F1C46E' }} />
+        </View>
+        <View style={styles.audioRow}>
+          <Text style={styles.audioLabel}>Ambient effects</Text>
+          <Switch value={preferences.ambientEffectsEnabled} onValueChange={(value) => setPreferences({ ambientEffectsEnabled: value })} trackColor={{ false: '#5D3A44', true: '#F1C46E' }} />
         </View>
         <View style={styles.audioRow}>
           <Text style={styles.audioLabel}>Haptic feedback</Text>
-          <Switch value={hapticsEnabled} onValueChange={setHapticsEnabled} trackColor={{ false: '#35435F', true: '#3E8FFF' }} />
+          <Switch value={preferences.hapticFeedbackEnabled} onValueChange={(value) => setPreferences({ hapticFeedbackEnabled: value })} trackColor={{ false: '#5D3A44', true: '#F1C46E' }} />
         </View>
       </View>
 
@@ -868,25 +898,7 @@ const feltStyles = StyleSheet.create({
   brandText: { color: 'rgba(255,255,255,0.10)', fontSize: 26, fontWeight: '900', letterSpacing: 5 },
   brandSub: { color: 'rgba(255,255,255,0.09)', fontSize: 10, fontWeight: '800', letterSpacing: 2 },
   dealer: { position: 'absolute', width: 68, alignItems: 'center', gap: 3 },
-  dealerAvatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: '#12233C',
-    borderWidth: 2,
-    borderColor: '#EBD9B4',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dealerEmoji: { fontSize: 22 },
-  dealerLabel: {
-    color: '#F3E7C6',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-    textShadowColor: 'rgba(0,0,0,0.6)',
-    textShadowRadius: 3,
-  },
+  dealerStageAnchor: { position: 'absolute', overflow: 'hidden' },
   board: { position: 'absolute', alignItems: 'center', gap: 8 },
   potRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   potPill: {
