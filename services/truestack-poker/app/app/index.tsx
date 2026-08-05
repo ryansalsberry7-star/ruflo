@@ -112,7 +112,7 @@ export default function HomeScreen() {
       <View style={styles.linkCard}>
         {QUICK_LINKS.map((link, index) => (
           <Link key={link.href} href={link.href} asChild>
-            <Pressable style={[styles.linkRow, index === QUICK_LINKS.length - 1 && styles.linkRowLast]}>
+            <Pressable style={index === QUICK_LINKS.length - 1 ? styles.linkRowLastMerged : styles.linkRow}>
               <View>
                 <Text style={styles.linkLabel}>{link.label}</Text>
                 <Text style={styles.linkCaption}>
@@ -232,7 +232,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#341A21',
   },
-  linkRowLast: { borderBottomWidth: 0 },
+  linkRowLastMerged: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 15,
+    borderBottomWidth: 0,
+  },
   linkLabel: { color: '#FFF4E7', fontSize: 15, fontWeight: '700' },
   linkCaption: { color: '#8C7069', fontSize: 12, marginTop: 2 },
   linkChevron: { color: '#7A4A53', fontSize: 20, fontWeight: '700' },

@@ -38,7 +38,7 @@ export default function LoginScreen() {
         />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Pressable
-          style={[styles.button, (loading || username.trim().length === 0) && styles.buttonDisabled]}
+          style={loading || username.trim().length === 0 ? styles.buttonDisabled : styles.button}
           onPress={() => void handleLogin()}
           disabled={loading || username.trim().length === 0}
         >
@@ -91,7 +91,14 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     marginTop: 2,
   },
-  buttonDisabled: { opacity: 0.5 },
+  buttonDisabled: {
+    backgroundColor: '#F1C46E',
+    borderRadius: 14,
+    alignItems: 'center',
+    paddingVertical: 15,
+    marginTop: 2,
+    opacity: 0.5,
+  },
   buttonText: { color: '#2A1118', fontSize: 15, fontWeight: '900' },
   footer: { flexDirection: 'row', gap: 6, justifyContent: 'center' },
   footerText: { color: '#8C7069', fontSize: 13 },

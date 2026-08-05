@@ -1,5 +1,23 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
+
+function canUseWebStorage(): boolean {
+  return Platform.OS === 'web' && typeof globalThis.localStorage !== 'undefined';
+}
+
+async function readPreferencesStorage(key: string): Promise<string | null> {
+  if (canUseWebStorage()) return globalThis.localStorage.getItem(key);
+  return await SecureStore.getItemAsync(key);
+}
+
+async function writePreferencesStorage(key: string, value: string): Promise<void> {
+  if (canUseWebStorage()) {
+    globalThis.localStorage.setItem(key, value);
+    return;
+  }
+  await SecureStore.setItemAsync(key, value);
+}
 
 export type LiveDealerQuality = 'auto' | 'high' | 'balanced' | 'lite';
 
@@ -44,7 +62,7 @@ export function TablePreferencesProvider({ children }: { children: ReactNode }) 
 
     async function loadPreferences(): Promise<void> {
       try {
-        const storedValue = await SecureStore.getItemAsync(TABLE_PREFERENCES_KEY);
+        const storedValue = await readPreferencesStorage(TABLE_PREFERENCES_KEY);
         if (!active || !storedValue) return;
         const parsed = JSON.parse(storedValue) as Partial<TablePreferences>;
         setPreferencesState((current) => ({ ...current, ...parsed }));
@@ -63,7 +81,9 @@ export function TablePreferencesProvider({ children }: { children: ReactNode }) 
 
   useEffect(() => {
     if (!ready) return;
-    void SecureStore.setItemAsync(TABLE_PREFERENCES_KEY, JSON.stringify(preferences));
+    writePreferencesStorage(TABLE_PREFERENCES_KEY, JSON.stringify(preferences)).catch(() => {
+      // Ignore storage failures; preferences remain in memory for this session.
+    });
   }, [preferences, ready]);
 
   function setPreferences(update: Partial<TablePreferences>): void {
