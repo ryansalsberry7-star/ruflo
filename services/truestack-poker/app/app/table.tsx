@@ -31,16 +31,19 @@ interface TableEventEnvelope {
 }
 
 const TABLE_ID = 'cash-aurora';
-const MAX_SEATS = 6;
+const MAX_SEATS = 9;
 
 // Seat centre positions as fractions of the felt (slot 0 is the hero, bottom-centre).
 const SEAT_SLOTS = [
   { x: 0.5, y: 0.9 },
-  { x: 0.16, y: 0.7 },
-  { x: 0.16, y: 0.28 },
-  { x: 0.5, y: 0.1 },
-  { x: 0.84, y: 0.28 },
-  { x: 0.84, y: 0.7 },
+  { x: 0.2, y: 0.74 },
+  { x: 0.09, y: 0.52 },
+  { x: 0.15, y: 0.24 },
+  { x: 0.37, y: 0.09 },
+  { x: 0.63, y: 0.09 },
+  { x: 0.85, y: 0.24 },
+  { x: 0.91, y: 0.52 },
+  { x: 0.8, y: 0.74 },
 ];
 
 const SUIT_META: Record<string, { symbol: string; color: string }> = {
@@ -194,8 +197,8 @@ function SeatPod({ player, isHero, isTurn }: SeatPodProps): JSX.Element {
       <View style={seatStyles.cardsRow}>
         {!player.folded ? (
           <>
-            <PlayingCard faceDown />
-            <PlayingCard faceDown />
+            <View style={seatStyles.holeBack} />
+            <View style={seatStyles.holeBack} />
           </>
         ) : null}
       </View>
@@ -496,7 +499,7 @@ export default function TableScreen() {
               key={index}
               style={[
                 feltStyles.seatAnchor,
-                { left: slot.x * tableWidth - 40, top: slot.y * tableHeight - 48 },
+                { left: slot.x * tableWidth - 32, top: slot.y * tableHeight - 44 },
               ]}
             >
               <SeatPod
@@ -771,7 +774,7 @@ const feltStyles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 2,
   },
-  seatAnchor: { position: 'absolute', width: 80, alignItems: 'center' },
+  seatAnchor: { position: 'absolute', width: 64, alignItems: 'center' },
   tableCaption: { color: '#8FA6CC', fontSize: 12, textAlign: 'center', marginTop: 30 },
 });
 
@@ -801,12 +804,12 @@ const cardStyles = StyleSheet.create({
 
 const seatStyles = StyleSheet.create({
   pod: {
-    width: 80,
+    width: 64,
     alignItems: 'center',
     gap: 2,
     paddingVertical: 6,
-    paddingHorizontal: 4,
-    borderRadius: 14,
+    paddingHorizontal: 3,
+    borderRadius: 12,
     backgroundColor: 'rgba(8,16,32,0.82)',
     borderWidth: 1,
     borderColor: '#23324E',
@@ -814,18 +817,19 @@ const seatStyles = StyleSheet.create({
   heroPod: { borderColor: '#3E8FFF', backgroundColor: 'rgba(20,40,74,0.92)' },
   turnPod: { borderColor: '#7ED3FF', shadowColor: '#7ED3FF', shadowOpacity: 0.7, shadowRadius: 8 },
   emptyPod: { borderStyle: 'dashed', borderColor: '#3C4E70', backgroundColor: 'rgba(8,16,32,0.5)' },
-  cardsRow: { flexDirection: 'row', gap: 2, height: 20, marginBottom: 2 },
+  cardsRow: { flexDirection: 'row', gap: 3, height: 24, marginBottom: 1 },
+  holeBack: { width: 16, height: 23, borderRadius: 3, backgroundColor: '#17345B', borderWidth: 1, borderColor: '#4C86D3' },
   avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.35)',
   },
-  avatarText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
-  avatarEmoji: { fontSize: 22, lineHeight: 26 },
+  avatarText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
+  avatarEmoji: { fontSize: 18, lineHeight: 22 },
   dealerButton: {
     position: 'absolute',
     right: -6,
@@ -840,17 +844,17 @@ const seatStyles = StyleSheet.create({
     borderColor: '#0B1220',
   },
   dealerButtonText: { color: '#0B1220', fontSize: 10, fontWeight: '900' },
-  pulseRing: { position: 'absolute', top: -5, left: -5, right: -5, bottom: -5, borderRadius: 18, borderWidth: 2, borderColor: '#7ED3FF' },
-  nameTag: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: 'rgba(6,12,24,0.72)', borderWidth: 1, marginTop: 1 },
-  name: { color: '#EAF1FF', fontSize: 12, fontWeight: '700', maxWidth: 74 },
-  stackRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 1 },
-  stack: { color: '#7ED3FF', fontSize: 12, fontWeight: '800' },
+  pulseRing: { position: 'absolute', top: -5, left: -5, right: -5, bottom: -5, borderRadius: 14, borderWidth: 2, borderColor: '#7ED3FF' },
+  nameTag: { borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1, backgroundColor: 'rgba(6,12,24,0.72)', borderWidth: 1, marginTop: 1 },
+  name: { color: '#EAF1FF', fontSize: 11, fontWeight: '700', maxWidth: 56 },
+  stackRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 },
+  stack: { color: '#7ED3FF', fontSize: 11, fontWeight: '800' },
   status: { color: '#8299BE', fontSize: 10, fontWeight: '600' },
   statusActive: { color: '#7ED3FF' },
   emptyAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
