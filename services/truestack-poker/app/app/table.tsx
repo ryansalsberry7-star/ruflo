@@ -33,17 +33,18 @@ interface TableEventEnvelope {
 const TABLE_ID = 'cash-aurora';
 const MAX_SEATS = 9;
 
-// Seat centre positions as fractions of the felt (slot 0 is the hero, bottom-centre).
+// Seat centre positions as fractions of the felt, placed on the oval rim so pods
+// hug the edge. Slot 0 is the hero, bottom-centre; the rest ring clockwise.
 const SEAT_SLOTS = [
-  { x: 0.5, y: 0.9 },
-  { x: 0.2, y: 0.74 },
-  { x: 0.09, y: 0.52 },
-  { x: 0.15, y: 0.24 },
-  { x: 0.37, y: 0.09 },
-  { x: 0.63, y: 0.09 },
-  { x: 0.85, y: 0.24 },
-  { x: 0.91, y: 0.52 },
-  { x: 0.8, y: 0.74 },
+  { x: 0.5, y: 0.83 },
+  { x: 0.2, y: 0.75 },
+  { x: 0.09, y: 0.55 },
+  { x: 0.13, y: 0.26 },
+  { x: 0.35, y: 0.11 },
+  { x: 0.65, y: 0.11 },
+  { x: 0.87, y: 0.26 },
+  { x: 0.91, y: 0.55 },
+  { x: 0.8, y: 0.75 },
 ];
 
 const SUIT_META: Record<string, { symbol: string; color: string }> = {
@@ -171,17 +172,29 @@ interface SeatPodProps {
   player: TablePlayer | null;
   isHero: boolean;
   isTurn: boolean;
+  onSit?: () => void;
+  seated: boolean;
 }
 
-function SeatPod({ player, isHero, isTurn }: SeatPodProps): JSX.Element {
+function SeatPod({ player, isHero, isTurn, onSit, seated }: SeatPodProps): JSX.Element {
   if (!player) {
+    const label = isHero ? 'Taking seat\u2026' : seated ? 'Open' : 'Sit here';
     return (
-      <View style={[seatStyles.pod, seatStyles.emptyPod]}>
-        <View style={seatStyles.emptyAvatar}>
+      <Pressable
+        onPress={onSit}
+        disabled={!onSit}
+        style={({ pressed }) => [
+          seatStyles.pod,
+          seatStyles.emptyPod,
+          !seated && !isHero && seatStyles.openPod,
+          pressed && seatStyles.pressedPod,
+        ]}
+      >
+        <View style={[seatStyles.emptyAvatar, !seated && !isHero && seatStyles.openAvatar]}>
           <Text style={seatStyles.emptyPlus}>+</Text>
         </View>
-        <Text style={seatStyles.emptyLabel}>{isHero ? 'Taking seat\u2026' : 'Open'}</Text>
-      </View>
+        <Text style={[seatStyles.emptyLabel, !seated && !isHero && seatStyles.openLabel]}>{label}</Text>
+      </Pressable>
     );
   }
   const status = player.folded
@@ -231,6 +244,7 @@ export default function TableScreen() {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [heroSlot, setHeroSlot] = useState<number | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [hapticsEnabled, setHapticsEnabled] = useState(true);
   const reconnectTokenRef = useRef<string | null>(null);
@@ -255,19 +269,7 @@ export default function TableScreen() {
     manualCloseRef.current = false;
 
     const connect = async (useReconnectToken = false): Promise<void> => {
-      try {
-        await postJson(
-          `/api/tables/${TABLE_ID}/join`,
-          { buyIn: 0 },
-          { headers: { authorization: `Bearer ${authToken}` } }
-        );
-      } catch (joinError) {
-        if (active) {
-          setError(joinError instanceof Error ? joinError.message : 'Failed to join table.');
-        }
-        return;
-      }
-
+      // Connect as a spectator; the player takes a seat by tapping an open pod.
       const socket = new WebSocket(wsUrl);
       socketRef.current = socket;
 
@@ -389,6 +391,28 @@ export default function TableScreen() {
   const mySeat = table?.players.find((player) => player.id === user?.userId) ?? null;
   const communityCards = table?.communityCards.map((card) => card.id.toUpperCase()) ?? [];
 
+  async function handleSit(index: number): Promise<void> {
+    if (mySeat) {
+      // Already seated: reposition the hero visually to the tapped open seat.
+      setHeroSlot(index);
+      void triggerFeedback(hapticsEnabled, 'selection');
+      return;
+    }
+    try {
+      const response = await postJson<{ table?: TableState }>(
+        `/api/tables/${TABLE_ID}/join`,
+        { buyIn: 0 },
+        { headers: { authorization: `Bearer ${authToken ?? ''}` } }
+      );
+      setHeroSlot(index);
+      if (response?.table) setTable(response.table);
+      setError(null);
+      void triggerFeedback(hapticsEnabled, 'success');
+    } catch (sitError) {
+      setError(sitError instanceof Error ? sitError.message : 'Failed to take seat.');
+    }
+  }
+
   if (authLoading) {
     return (
       <View style={styles.centered}>
@@ -411,11 +435,16 @@ export default function TableScreen() {
   }
 
   const tableWidth = Math.min(windowWidth - 20, 600);
-  const tableHeight = Math.round(tableWidth * 0.92);
+  const tableHeight = Math.round(tableWidth * 0.72);
+  const seated = !!mySeat;
+  const effectiveHeroSlot = seated ? heroSlot ?? 0 : null;
   const opponents = (table?.players ?? []).filter((player) => player.id !== user.userId);
+  let oppCursor = 0;
   const seatAssignments = SEAT_SLOTS.slice(0, MAX_SEATS).map((slot, index) => {
-    if (index === 0) return { slot, player: mySeat, isHero: true };
-    return { slot, player: opponents[index - 1] ?? null, isHero: false };
+    if (effectiveHeroSlot === index) return { slot, player: mySeat, isHero: true };
+    const player = opponents[oppCursor] ?? null;
+    if (player) oppCursor += 1;
+    return { slot, player, isHero: false };
   });
 
   return (
@@ -506,6 +535,8 @@ export default function TableScreen() {
                 player={player}
                 isHero={isHero}
                 isTurn={!!player && table?.currentTurn === player.id}
+                seated={seated}
+                onSit={!player ? () => void handleSit(index) : undefined}
               />
             </View>
           ))}
@@ -524,28 +555,32 @@ export default function TableScreen() {
       </View>
 
       <View style={styles.controlsPanel}>
-        <Text style={styles.raiseLabel}>Selected bet ${betValue.toFixed(2)}</Text>
+        {seated ? (
+          <Text style={styles.raiseLabel}>Selected bet ${betValue.toFixed(2)}</Text>
+        ) : (
+          <Text style={styles.sitHint}>Tap an open seat to join the table</Text>
+        )}
         <View style={styles.quickRow}>
           {quickBets.map((quick) => (
-            <Pressable key={quick.label} style={styles.quickButton} onPress={() => setBetValue(quick.value)}>
+            <Pressable key={quick.label} disabled={!seated} style={[styles.quickButton, !seated && styles.disabledButton]} onPress={() => setBetValue(quick.value)}>
               <Text style={styles.quickText}>{quick.label}</Text>
             </Pressable>
           ))}
         </View>
         <View style={styles.actionsGrid}>
-          <Pressable style={[styles.actionButton, styles.foldButton]} onPress={() => sendAction('fold')}>
+          <Pressable disabled={!seated} style={[styles.actionButton, styles.foldButton, !seated && styles.disabledButton]} onPress={() => sendAction('fold')}>
             <Text style={styles.actionButtonText}>Fold</Text>
           </Pressable>
-          <Pressable style={styles.actionButton} onPress={() => sendAction('check')}>
+          <Pressable disabled={!seated} style={[styles.actionButton, !seated && styles.disabledButton]} onPress={() => sendAction('check')}>
             <Text style={styles.actionButtonText}>Check</Text>
           </Pressable>
-          <Pressable style={styles.actionButton} onPress={() => sendAction('call', betValue)}>
+          <Pressable disabled={!seated} style={[styles.actionButton, !seated && styles.disabledButton]} onPress={() => sendAction('call', betValue)}>
             <Text style={styles.actionButtonText}>Call</Text>
           </Pressable>
-          <Pressable style={[styles.actionButton, styles.raiseButton]} onPress={() => sendAction('raise', betValue)}>
+          <Pressable disabled={!seated} style={[styles.actionButton, styles.raiseButton, !seated && styles.disabledButton]} onPress={() => sendAction('raise', betValue)}>
             <Text style={styles.actionButtonText}>Raise</Text>
           </Pressable>
-          <Pressable style={styles.actionButton} onPress={() => sendAction('all-in', mySeat?.stack ?? betValue)}>
+          <Pressable disabled={!seated} style={[styles.actionButton, !seated && styles.disabledButton]} onPress={() => sendAction('all-in', mySeat?.stack ?? betValue)}>
             <Text style={styles.actionButtonText}>All-in</Text>
           </Pressable>
         </View>
@@ -568,10 +603,10 @@ export default function TableScreen() {
 }
 
 const styles = StyleSheet.create({
-  centered: { flex: 1, backgroundColor: '#050813', justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
-  message: { color: '#D6E3FF', fontSize: 15, textAlign: 'center', lineHeight: 22 },
-  screen: { flex: 1, backgroundColor: '#050813' },
-  content: { paddingHorizontal: 10, paddingTop: 40, paddingBottom: 24, gap: 12 },
+  centered: { flex: 1, backgroundColor: '#2A0C12', justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
+  message: { color: '#F3DCD2', fontSize: 15, textAlign: 'center', lineHeight: 22 },
+  screen: { flex: 1, backgroundColor: '#2A0C12' },
+  content: { paddingHorizontal: 10, paddingTop: 40, paddingBottom: 8, gap: 12 },
   headerRow: { gap: 4 },
   eyebrow: { color: '#7ED3FF', fontSize: 11, fontWeight: '700', letterSpacing: 1.6 },
   title: { color: '#F5F8FF', fontSize: 24, fontWeight: '800' },
@@ -652,6 +687,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   raiseLabel: { color: '#F4F8FF', fontSize: 16, fontWeight: '700' },
+  sitHint: { color: '#7ED3FF', fontSize: 14, fontWeight: '700', textAlign: 'center' },
+  disabledButton: { opacity: 0.4 },
   quickRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   quickButton: {
     borderColor: '#334D7B',
@@ -694,7 +731,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   primaryText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
-  feltWrap: { alignItems: 'center', paddingBottom: 46 },
+  feltWrap: { alignItems: 'center', paddingBottom: 14 },
 });
 
 const feltStyles = StyleSheet.create({
@@ -817,6 +854,8 @@ const seatStyles = StyleSheet.create({
   heroPod: { borderColor: '#3E8FFF', backgroundColor: 'rgba(20,40,74,0.92)' },
   turnPod: { borderColor: '#7ED3FF', shadowColor: '#7ED3FF', shadowOpacity: 0.7, shadowRadius: 8 },
   emptyPod: { borderStyle: 'dashed', borderColor: '#3C4E70', backgroundColor: 'rgba(8,16,32,0.5)' },
+  openPod: { borderColor: '#4ADE80', backgroundColor: 'rgba(12,40,26,0.72)' },
+  pressedPod: { opacity: 0.6, transform: [{ scale: 0.96 }] },
   cardsRow: { flexDirection: 'row', gap: 3, height: 24, marginBottom: 1 },
   holeBack: { width: 16, height: 23, borderRadius: 3, backgroundColor: '#17345B', borderWidth: 1, borderColor: '#4C86D3' },
   avatar: {
@@ -863,4 +902,6 @@ const seatStyles = StyleSheet.create({
   },
   emptyPlus: { color: '#5E77A6', fontSize: 20, fontWeight: '700' },
   emptyLabel: { color: '#6E86AE', fontSize: 10, fontWeight: '600' },
+  openAvatar: { borderColor: '#4ADE80', borderStyle: 'solid' },
+  openLabel: { color: '#8FE9B4', fontWeight: '800' },
 });
