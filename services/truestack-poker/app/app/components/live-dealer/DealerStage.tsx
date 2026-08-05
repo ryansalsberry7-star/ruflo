@@ -44,11 +44,10 @@ export function DealerStage({ cue, preferences, viewportWidth, tableWidth, table
 const styles = StyleSheet.create({
   stageWrap: {
     flex: 1,
-    overflow: 'hidden',
-    borderRadius: 18,
-    backgroundColor: '#D8DDE3',
-    borderWidth: 1,
-    borderColor: '#8B857B',
+    overflow: 'visible',
+    // No panel or border: the dealer should read as standing at the table, not inside a
+    // pale card laid over the felt.
+    backgroundColor: 'transparent',
   },
   fallbackWrap: {
     flexDirection: 'row',

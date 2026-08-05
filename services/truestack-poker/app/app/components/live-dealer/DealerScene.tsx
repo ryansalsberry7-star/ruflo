@@ -60,13 +60,6 @@ export function DealerScene({ cue, renderProfile, preferences }: DealerSceneProp
       <View style={styles.stageDesk}>
         <View style={styles.stageDeskTrim} />
       </View>
-      <View style={styles.caption}>
-        <Text style={styles.eyebrow}>LIVE DEALER BOOTH</Text>
-        <Text style={styles.title}>{skinLabel}</Text>
-        <Text style={styles.meta}>
-          {cue.statusLabel} • {renderProfile.qualityTier} quality
-        </Text>
-      </View>
     </View>
   );
 }
@@ -76,8 +69,9 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'flex-end',
-    backgroundColor: '#D8DDE3',
-    overflow: 'hidden',
+    // Transparent so the dealer sits on the felt instead of inside a pale panel.
+    backgroundColor: 'transparent',
+    overflow: 'visible',
   },
   skylineBand: {
     position: 'absolute',
@@ -85,7 +79,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: '46%',
-    backgroundColor: '#BEDCEE',
+    backgroundColor: 'transparent',
   },
   palmLeft: {
     position: 'absolute',

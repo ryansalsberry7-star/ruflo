@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
 import { ActionBar } from './components/ActionBar';
 import { HoleCards } from './components/HoleCards';
+import { BetChips, PotChips } from './components/Chips';
 import { DealerStage } from './components/live-dealer/DealerStage';
 import { useDealerController } from './components/live-dealer/dealerController';
 import { useAuth } from './lib/auth';
@@ -155,6 +156,8 @@ interface SeatPodProps {
   holeCardCount: number;
   /** Most recent action this street, e.g. "RAISE $2". */
   lastAction?: string | null;
+  /** Pod width in px. Scaled from the felt so nine seats fit a phone without colliding. */
+  podWidth: number;
 }
 
 function SeatPod({
@@ -169,6 +172,7 @@ function SeatPod({
   deckMode,
   holeCardCount,
   lastAction,
+  podWidth,
 }: SeatPodProps): JSX.Element {
   if (!player) {
     const label = isHero ? 'Taking seat\u2026' : seated ? 'Open' : 'Sit here';
@@ -178,6 +182,7 @@ function SeatPod({
         disabled={!onSit}
         style={({ pressed }) => [
           seatStyles.pod,
+          { width: podWidth },
           seatStyles.emptyPod,
           !seated && !isHero && seatStyles.openPod,
           pressed && seatStyles.pressedPod,
@@ -206,7 +211,7 @@ function SeatPod({
         : 'Active';
   const character = getPlayerCharacter(resolveCharacterId(characterId, player.name));
   return (
-    <View style={[seatStyles.pod, isHero && seatStyles.heroPod, isTurn && seatStyles.turnPod]}>
+    <View style={[seatStyles.pod, { width: podWidth }, isHero && seatStyles.heroPod, isTurn && seatStyles.turnPod]}>
       {isTurn ? <PulseRing /> : null}
       <View style={seatStyles.cardsRow}>
         {!player.folded ? (
@@ -272,6 +277,9 @@ export default function TableScreen() {
   const [error, setError] = useState<string | null>(null);
   const [heroSlot, setHeroSlot] = useState<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Winner of the hand just settled, used to sweep the pot chips toward their seat.
+  const [lastWinnerId, setLastWinnerId] = useState<string | null>(null);
+  const [potPushKey, setPotPushKey] = useState(0);
   const [playerProfiles, setPlayerProfiles] = useState<Record<string, PlayerIdentityProfile>>({});
   const [playerTrust, setPlayerTrust] = useState<Record<string, PlayerTrustSummary>>({});
   const reconnectTokenRef = useRef<string | null>(null);
@@ -329,6 +337,13 @@ export default function TableScreen() {
           // The previous hand's cards are dead the moment it settles; the redeal sends
           // fresh ones, so clearing here avoids briefly showing a stale hand.
           setHoleCards([]);
+          const settled = message.payload?.settled as { payouts?: Array<{ playerId: string }> } | undefined;
+          const winner = settled?.payouts?.[0]?.playerId ?? null;
+          setLastWinnerId(winner);
+          // Keyed so back-to-back wins by the same player still replay the sweep.
+          setPotPushKey((key) => key + 1);
+          // Clear once the sweep has played, so the next hand starts from the centre.
+          setTimeout(() => setLastWinnerId(null), 900);
           return;
         }
 
@@ -516,6 +531,11 @@ export default function TableScreen() {
     }
   }
 
+  // Every hook must run before the early returns below. Placing useDealerController after
+  // them meant the loading render called fewer hooks than the signed-in render, and React
+  // threw "Rendered more hooks than during the previous render" the moment auth resolved.
+  const dealerCue = useDealerController(table, connected);
+
   if (authLoading) {
     return (
       <View style={styles.centered}>
@@ -539,9 +559,11 @@ export default function TableScreen() {
 
   const tableWidth = Math.min(windowWidth - 20, 600);
   const tableHeight = Math.round(tableWidth * 0.72);
+  // Nine pods ring the felt; at 80px fixed they overlapped badly on a phone. Scaling with
+  // the felt keeps them legible on a tablet and non-colliding on a narrow screen.
+  const podWidth = Math.max(52, Math.min(80, Math.round(tableWidth / 4.8)));
   const seated = !!mySeat;
   const heroCharacter = getPlayerCharacter(user.playerCharacter);
-  const dealerCue = useDealerController(table, connected);
   const effectiveHeroSlot = seated ? heroSlot ?? 0 : null;
   const opponents = (table?.players ?? []).filter((player) => player.id !== user.userId);
   let oppCursor = 0;
@@ -551,6 +573,15 @@ export default function TableScreen() {
     if (player) oppCursor += 1;
     return { slot, player, isHero: false };
   });
+  // Offset from the pot to the winner's seat, in felt pixels. The pot sits at roughly
+  // (0.5, 0.46) of the felt, so this is simply the delta to that seat's slot.
+  const winnerSlot = lastWinnerId
+    ? seatAssignments.find(({ player }) => player?.id === lastWinnerId)?.slot ?? null
+    : null;
+  const potPush = winnerSlot
+    ? { x: (winnerSlot.x - 0.5) * tableWidth, y: (winnerSlot.y - 0.46) * tableHeight }
+    : null;
+
   const occupiedSeatTargets = seatAssignments
     .filter((assignment): assignment is typeof assignment & { player: TablePlayer } => !!assignment.player)
     .map(({ slot, player }) => ({
@@ -657,7 +688,8 @@ export default function TableScreen() {
 
             <View style={[feltStyles.board, { top: tableHeight * 0.44, width: tableWidth }]}>
               <View style={feltStyles.potRow}>
-                <ChipStack size="lg" />
+                {/* Real chips in the middle, sized by the pot, that sweep to the winner. */}
+                <PotChips amount={table?.pot ?? 0} pushTo={potPush} pushKey={potPushKey} />
                 <View style={feltStyles.potPill}>
                   <Text style={feltStyles.potText}>Pot ${table?.pot.toFixed(2) ?? '0.00'}</Text>
                 </View>
@@ -670,12 +702,32 @@ export default function TableScreen() {
               <Text style={feltStyles.streetText}>{(table?.currentStreet ?? 'waiting').toUpperCase()}</Text>
             </View>
 
+            {/* Chips each player has pushed forward this street, drawn between their seat
+                and the pot so the table reads the way a live one does. */}
+            {seatAssignments.map(({ slot, player }, index) =>
+              player && player.streetContribution > 0 ? (
+                <View
+                  key={`bet-${index}`}
+                  pointerEvents="none"
+                  style={[
+                    feltStyles.betAnchor,
+                    {
+                      left: (slot.x + (0.5 - slot.x) * 0.3) * tableWidth - 26,
+                      top: (slot.y + (0.46 - slot.y) * 0.32) * tableHeight - 10,
+                    },
+                  ]}
+                >
+                  <BetChips amount={player.streetContribution} />
+                </View>
+              ) : null
+            )}
+
             {seatAssignments.map(({ slot, player, isHero }, index) => (
               <View
                 key={index}
                 style={[
                   feltStyles.seatAnchor,
-                  { left: slot.x * tableWidth - 40, top: slot.y * tableHeight - 56 },
+                  { left: slot.x * tableWidth - podWidth / 2, top: slot.y * tableHeight - 56 },
                 ]}
               >
                 <SeatPod
@@ -689,6 +741,7 @@ export default function TableScreen() {
                   deckMode={deckMode}
                   holeCardCount={table?.variant === 'plo' ? 4 : 2}
                   lastAction={player ? seatLastAction(player) : null}
+                  podWidth={podWidth}
                   onSit={!player ? () => void handleSit(index) : undefined}
                 />
               </View>
@@ -1221,6 +1274,11 @@ const feltStyles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 2,
+  },
+  betAnchor: {
+    position: 'absolute',
+    width: 52,
+    alignItems: 'center',
   },
   seatAnchor: { position: 'absolute', width: 80, alignItems: 'center' },
   tableCaption: { color: '#8FA6CC', fontSize: 12, textAlign: 'center', marginTop: 30 },
