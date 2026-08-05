@@ -54,7 +54,7 @@ export default function HomeScreen() {
       <View style={styles.hero}>
         <Text style={styles.eyebrow}>ZERO-RAKE POKER</Text>
         <Text style={styles.title}>TRUE STACK</Text>
-        <Text style={styles.subtitle}>No house edge. No bots. No cut of the pot.</Text>
+        <Text style={styles.subtitle}>No house edge. No cut of the pot. NLH & PLO.</Text>
       </View>
 
       <View style={styles.accountCard}>

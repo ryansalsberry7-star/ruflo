@@ -151,6 +151,8 @@ interface SeatPodProps {
   /** The viewer's own hand. Only ever populated for the hero pod. */
   heroHoleCards: string[];
   deckMode: DeckColorMode;
+  /** Cards per hand for this variant: 2 for Hold'em, 4 for Omaha. */
+  holeCardCount: number;
   /** Most recent action this street, e.g. "RAISE $2". */
   lastAction?: string | null;
 }
@@ -165,6 +167,7 @@ function SeatPod({
   verifiedHuman,
   heroHoleCards,
   deckMode,
+  holeCardCount,
   lastAction,
 }: SeatPodProps): JSX.Element {
   if (!player) {
@@ -213,6 +216,7 @@ function SeatPod({
             deckMode={deckMode}
             faceDown={!isHero || heroHoleCards.length === 0}
             size={isHero ? 'md' : 'sm'}
+            cardCount={holeCardCount}
           />
         ) : null}
       </View>
@@ -561,7 +565,9 @@ export default function TableScreen() {
       <View style={styles.headerRow}>
         <View style={styles.headerMain}>
           <Text style={styles.title}>Aurora Table</Text>
-          <Text style={styles.headerStakes}>$0.05/$0.10 • Play-money beta</Text>
+          <Text style={styles.headerStakes}>
+            {table?.variant === 'plo' ? 'PLO' : 'NLH'} • $0.05/$0.10 • Play-money beta
+          </Text>
         </View>
         <Pressable style={styles.gearButton} onPress={() => setSettingsOpen((open) => !open)}>
           <Text style={styles.gearText}>⚙</Text>
@@ -681,6 +687,7 @@ export default function TableScreen() {
                   verifiedHuman={player ? playerTrust[player.id]?.verifiedHuman : false}
                   heroHoleCards={isHero ? holeCards : []}
                   deckMode={deckMode}
+                  holeCardCount={table?.variant === 'plo' ? 4 : 2}
                   lastAction={player ? seatLastAction(player) : null}
                   onSit={!player ? () => void handleSit(index) : undefined}
                 />

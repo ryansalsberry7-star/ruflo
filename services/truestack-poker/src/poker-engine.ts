@@ -1,4 +1,5 @@
 import { randomInt } from 'node:crypto';
+import type { GameVariant } from './contracts.js';
 
 export type Suit = 'clubs' | 'diamonds' | 'hearts' | 'spades';
 export type Rank = '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | 'T' | 'J' | 'Q' | 'K' | 'A';
@@ -39,6 +40,8 @@ export interface PlayerSeat {
 
 export interface TableState {
   id: string;
+  /** Game type. Drives hole-card count, showdown evaluation, and the betting cap. */
+  variant: GameVariant;
   smallBlind: number;
   bigBlind: number;
   buttonIndex: number;
@@ -61,6 +64,8 @@ export interface TableState {
 
 export interface CreateTableInput {
   id: string;
+  /** Defaults to No-Limit Hold'em when omitted. */
+  variant?: GameVariant;
   smallBlind: number;
   bigBlind: number;
   players: Array<{ id: string; name: string; stack: number; isBot?: boolean }>;
@@ -176,6 +181,7 @@ export function createTable(input: CreateTableInput): TableState {
 
   let table: TableState = {
     id: input.id,
+    variant: input.variant ?? 'nlh',
     smallBlind: input.smallBlind,
     bigBlind: input.bigBlind,
     buttonIndex: 0,
@@ -315,6 +321,12 @@ export function applyAction(table: TableState, action: PlayerAction): TableState
     const requested = action.amount ?? 0;
     if (requested < Math.min(table.bigBlind, player.stack)) throw new Error('Bet is below the table minimum.');
     if (requested > player.stack) throw new Error('Insufficient stack for requested action');
+    if (table.variant === 'plo') {
+      const cap = maxPotLimitRaiseTo(table, action.playerId);
+      if (roundCents(player.streetContribution + requested) > cap) {
+        throw new Error(`Pot-limit: bet may not exceed ${cap}.`);
+      }
+    }
     committedAmount = requested;
     nextCurrentBet = roundCents(player.streetContribution + committedAmount);
     nextMinRaise = Math.max(nextCurrentBet, table.bigBlind);
@@ -329,11 +341,27 @@ export function applyAction(table: TableState, action: PlayerAction): TableState
     if (!isShortAllIn && raiseTo - table.currentBet < table.minRaise) {
       throw new Error(`Raise must be at least ${table.minRaise} more than the current bet.`);
     }
+    if (table.variant === 'plo') {
+      const cap = maxPotLimitRaiseTo(table, action.playerId);
+      if (raiseTo > cap) {
+        throw new Error(`Pot-limit: raise may not exceed ${cap}.`);
+      }
+    }
     nextCurrentBet = raiseTo;
     if (!isShortAllIn) nextMinRaise = raiseTo - table.currentBet;
     reopensAction = true;
   } else if (action.type === 'all-in') {
     committedAmount = player.stack;
+    // Under pot-limit a stack deeper than the pot cannot shove: aggression is capped at
+    // the pot even when the player wants to commit everything. Calling all-in is never
+    // capped, so this only bites when the commitment would raise the current bet.
+    if (table.variant === 'plo') {
+      const cap = maxPotLimitRaiseTo(table, action.playerId);
+      const wouldRaiseTo = roundCents(player.streetContribution + committedAmount);
+      if (wouldRaiseTo > table.currentBet && wouldRaiseTo > cap) {
+        committedAmount = roundCents(cap - player.streetContribution);
+      }
+    }
     const newContribution = roundCents(player.streetContribution + committedAmount);
     if (newContribution > table.currentBet) {
       nextCurrentBet = newContribution;
@@ -348,7 +376,10 @@ export function applyAction(table: TableState, action: PlayerAction): TableState
   }
 
   const nextStreetContribution = roundCents(player.streetContribution + committedAmount);
-  const becomesAllIn = action.type === 'all-in' || roundCents(player.stack - committedAmount) <= 0;
+  // Derived from chips actually left, not from the action name: a pot-limit all-in can be
+  // capped below the full stack, and marking that seat all-in would freeze it out of the
+  // rest of the hand while it still had chips behind.
+  const becomesAllIn = roundCents(player.stack - committedAmount) <= 0;
 
   const nextState: TableState = {
     ...table,
@@ -387,6 +418,62 @@ export function resolveShowdown(table: TableState): HandResult {
 
 export function evaluateHandRank(cards: Card[]): string {
   return evaluateBestHand(cards).handRank;
+}
+
+/**
+ * Best Omaha hand: exactly two hole cards plus exactly three board cards.
+ *
+ * This is the rule that makes PLO a different game, not just Hold'em with more cards.
+ * Four hearts in hand and one on the board is NOT a flush, because only two hole cards
+ * may play. Evaluating the 9 cards together the way Hold'em does would silently score
+ * hands nobody actually holds, so the combinations are enumerated explicitly:
+ * C(4,2) x C(5,3) = 60 candidates on a full board.
+ */
+export function evaluateOmahaHand(holeCards: Card[], communityCards: Card[]): EvaluatedHand {
+  // Before the flop (or with a short board) no legal five-card hand exists yet; fall back
+  // to ranking the hole cards so comparisons still order sensibly.
+  if (communityCards.length < 3 || holeCards.length < 2) {
+    return evaluateBestHand(holeCards.length > 0 ? holeCards : communityCards);
+  }
+
+  let best: EvaluatedHand | null = null;
+  for (let a = 0; a < holeCards.length - 1; a += 1) {
+    for (let b = a + 1; b < holeCards.length; b += 1) {
+      for (let x = 0; x < communityCards.length - 2; x += 1) {
+        for (let y = x + 1; y < communityCards.length - 1; y += 1) {
+          for (let z = y + 1; z < communityCards.length; z += 1) {
+            const candidate = evaluateFiveCardHand([
+              holeCards[a],
+              holeCards[b],
+              communityCards[x],
+              communityCards[y],
+              communityCards[z],
+            ]);
+            if (!best || compareEvaluatedHands(candidate, best) > 0) best = candidate;
+          }
+        }
+      }
+    }
+  }
+
+  return best ?? { handRank: 'high card', categoryScore: 0, rankValues: [] };
+}
+
+/**
+ * Largest legal raise-to under pot-limit rules.
+ *
+ * The maximum raise is a call plus the pot as it would stand after that call, so
+ * raiseTo = currentBet + (pot + amountToCall). Still bounded by the stack, since a short
+ * stack can only ever shove.
+ */
+export function maxPotLimitRaiseTo(table: TableState, playerId: string): number {
+  const seat = table.players.find((entry) => entry.id === playerId);
+  if (!seat) return 0;
+  const amountToCall = Math.max(0, roundCents(table.currentBet - seat.streetContribution));
+  const potAfterCall = roundCents(table.pot + amountToCall);
+  const potLimit = roundCents(table.currentBet + potAfterCall);
+  const stackLimit = roundCents(seat.streetContribution + seat.stack);
+  return Math.min(potLimit, stackLimit);
 }
 
 export function evaluateBestHand(cards: Card[]): EvaluatedHand {

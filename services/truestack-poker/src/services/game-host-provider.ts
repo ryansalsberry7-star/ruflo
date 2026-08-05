@@ -1,5 +1,5 @@
 import type { ActionType, Card, TableState } from '../poker-engine.js';
-import type { StakeLevel, TournamentListing, ZeroRakePolicy } from '../contracts.js';
+import type { GameVariant, StakeLevel, TournamentListing, ZeroRakePolicy } from '../contracts.js';
 import type { HandVerificationRecord } from './dealer-service.js';
 import type { FeaturedTable, SettledHand, TableListing, TournamentRegistration } from './poker-service.js';
 
@@ -19,7 +19,8 @@ export interface GameHostProvider {
     tableId: string,
     stakeId: string,
     players: Array<{ id: string; name: string; stack: number; isBot?: boolean }>,
-    isPrivate?: boolean
+    isPrivate?: boolean,
+    variant?: GameVariant
   ): TableState;
   joinTable(tableId: string, player: { id: string; name: string; stack: number; isBot?: boolean }): TableState;
   /** Removes the player from the table and returns their remaining stack to their wallet. */

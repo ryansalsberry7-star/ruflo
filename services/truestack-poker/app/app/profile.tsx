@@ -156,7 +156,7 @@ export default function ProfileScreen() {
         <Text style={styles.trustRow}>Trust score: {trust.trustScore}/99</Text>
         <Text style={styles.trustRow}>Account age: {Math.max(1, trust.accountAgeDays)} days</Text>
         <Text style={styles.trustRow}>Security: {trust.securityVerificationStatus}</Text>
-        <Text style={styles.trustNote}>No bots. No house players. Real opponents only.</Text>
+        <Text style={styles.trustNote}>Zero rake. Every chip in the pot goes to players.</Text>
       </View>
 
       <View style={styles.grid}>

@@ -7,6 +7,7 @@ import {
   dealRiver,
   dealTurn,
   evaluateBestHand,
+  evaluateOmahaHand,
   isBettingRoundClosed,
   postBlinds,
   roundCents,
@@ -15,8 +16,8 @@ import {
   type PlayerAction,
   type TableState,
 } from '../poker-engine.js';
-import type { StakeLevel, TournamentListing, ZeroRakePolicy } from '../contracts.js';
-import { STAKE_LEVELS, TOURNAMENT_LISTINGS, ZERO_RAKE_POLICY } from '../contracts.js';
+import type { GameVariant, StakeLevel, TournamentListing, ZeroRakePolicy } from '../contracts.js';
+import { GAME_VARIANT_LABELS, HOLE_CARD_COUNT, STAKE_LEVELS, TOURNAMENT_LISTINGS, ZERO_RAKE_POLICY } from '../contracts.js';
 import { DealerService, type DealerHandState, type HandVerificationRecord } from './dealer-service.js';
 import type { GameHostProvider } from './game-host-provider.js';
 import { HighHandService } from './high-hand-service.js';
@@ -40,6 +41,8 @@ export interface SettledHand {
 export interface TableListing {
   id: string;
   stake: StakeLevel;
+  variant: GameVariant;
+  variantLabel: string;
   playersSeated: number;
   speed: StakeLevel['speed'];
   isPrivate: boolean;
@@ -82,12 +85,19 @@ export class PokerService extends EventEmitter implements GameHostProvider {
     super();
   }
 
-  createCashTable(tableId: string, stakeId: string, players: Array<{ id: string; name: string; stack: number; isBot?: boolean }>, isPrivate = false): TableState {
+  createCashTable(
+    tableId: string,
+    stakeId: string,
+    players: Array<{ id: string; name: string; stack: number; isBot?: boolean }>,
+    isPrivate = false,
+    variant: GameVariant = 'nlh'
+  ): TableState {
     const stake = STAKE_LEVELS.find((entry) => entry.id === stakeId);
     if (!stake) throw new Error('Unknown stake level');
 
     const table = createTable({
       id: tableId,
+      variant,
       smallBlind: stake.smallBlind,
       bigBlind: stake.bigBlind,
       players,
@@ -162,6 +172,8 @@ export class PokerService extends EventEmitter implements GameHostProvider {
       return {
         id: table.id,
         stake,
+        variant: table.variant,
+        variantLabel: GAME_VARIANT_LABELS[table.variant],
         playersSeated: table.players.length,
         speed: stake.speed,
         isPrivate: this.tablePrivacy.get(table.id) ?? false,
@@ -461,10 +473,13 @@ export class PokerService extends EventEmitter implements GameHostProvider {
   }
 
   private getOrCreateListing(tableId: string, stake: StakeLevel, isPrivate: boolean): TableListing {
+    const table = this.getTable(tableId);
     return {
       id: tableId,
       stake,
-      playersSeated: this.getTable(tableId).players.length,
+      variant: table.variant,
+      variantLabel: GAME_VARIANT_LABELS[table.variant],
+      playersSeated: table.players.length,
       speed: stake.speed,
       isPrivate,
     };
@@ -511,6 +526,7 @@ export class PokerService extends EventEmitter implements GameHostProvider {
       buttonIndex: table.buttonIndex,
       smallBlind: table.smallBlind,
       bigBlind: table.bigBlind,
+      holeCardCount: HOLE_CARD_COUNT[table.variant],
     });
 
     this.activeDealerHands.set(tableId, hand);
@@ -604,11 +620,10 @@ export class PokerService extends EventEmitter implements GameHostProvider {
     const activePlayers = table.players.filter((player) => !player.folded);
     if (activePlayers.length <= 1) {
       const winner = activePlayers[0]?.id ?? table.players[0]?.id;
-      const cards = winner ? this.cardsForPlayer(hand, winner) : [];
       return {
         winnerIds: winner ? [winner] : [],
         pot: table.pot,
-        handRank: evaluateBestHand(cards).handRank,
+        handRank: winner ? this.evaluateForVariant(table.variant, hand, winner).handRank : 'high card',
       };
     }
 
@@ -616,7 +631,7 @@ export class PokerService extends EventEmitter implements GameHostProvider {
     let winners: string[] = [];
 
     for (const player of activePlayers) {
-      const evaluated = evaluateBestHand(this.cardsForPlayer(hand, player.id));
+      const evaluated = this.evaluateForVariant(table.variant, hand, player.id);
       if (!bestHand) {
         bestHand = evaluated;
         winners = [player.id];
@@ -639,8 +654,20 @@ export class PokerService extends EventEmitter implements GameHostProvider {
     };
   }
 
-  private cardsForPlayer(hand: DealerHandState, playerId: string): Card[] {
-    return [...(hand.holeCardsByPlayer[playerId] ?? []), ...hand.communityCards];
+  /**
+   * Rank a player's hand under the table's variant.
+   *
+   * Hold'em takes the best five of the seven available cards. Omaha must use exactly two
+   * hole cards and exactly three board cards, so it cannot share the Hold'em path -- doing
+   * so would score hands the player does not actually hold (four hearts in hand plus one
+   * on the board is not a flush).
+   */
+  private evaluateForVariant(variant: GameVariant, hand: DealerHandState, playerId: string) {
+    const holeCards = hand.holeCardsByPlayer[playerId] ?? [];
+    if (variant === 'plo') {
+      return evaluateOmahaHand(holeCards, hand.communityCards);
+    }
+    return evaluateBestHand([...holeCards, ...hand.communityCards]);
   }
 }
 

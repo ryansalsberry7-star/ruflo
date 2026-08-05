@@ -22,8 +22,12 @@ export interface TablePlayer {
   isBot?: boolean;
 }
 
+export type GameVariant = 'nlh' | 'plo';
+
 export interface TableState {
   id: string;
+  /** 'nlh' bets are capped only by the stack; 'plo' caps every raise at the pot. */
+  variant: GameVariant;
   currentStreet: 'preflop' | 'flop' | 'turn' | 'river' | 'showdown';
   pot: number;
   players: TablePlayer[];
@@ -85,7 +89,11 @@ export function getLegalActions(table: TableState | null, playerId: string | nul
   // continue is shoving, which the all-in button handles.
   const canCoverCall = seat.stack >= amountToCall;
 
-  const maxRaiseTo = round2(seat.streetContribution + seat.stack);
+  // Pot-limit caps aggression at the pot, so the slider and the All-in chip must stop
+  // there rather than at the stack; offering a bigger size would only earn a rejection.
+  const stackCeiling = round2(seat.streetContribution + seat.stack);
+  const potCeiling = round2(table.currentBet + (table.pot + amountToCall));
+  const maxRaiseTo = table.variant === 'plo' ? Math.min(stackCeiling, potCeiling) : stackCeiling;
   const rawMinRaiseTo = facingBet ? table.currentBet + table.minRaise : Math.max(table.bigBlind, 0);
   // A short stack can still shove below the normal minimum, so clamp rather than forbid.
   const minRaiseTo = round2(Math.min(Math.max(rawMinRaiseTo, table.currentBet), maxRaiseTo));
@@ -98,7 +106,9 @@ export function getLegalActions(table: TableState | null, playerId: string | nul
     canCall: facingBet && canCoverCall,
     canBet: !facingBet && hasRaiseRoom,
     canRaise: facingBet && hasRaiseRoom,
-    canAllIn: seat.stack > 0,
+    // Under pot limit a stack deeper than the pot cannot shove, so the button must not
+    // promise one; the biggest legal aggressive action is a pot-sized raise.
+    canAllIn: seat.stack > 0 && (table.variant !== 'plo' || stackCeiling <= potCeiling),
     amountToCall: Math.min(amountToCall, seat.stack),
     minRaiseTo,
     maxRaiseTo,
@@ -136,7 +146,9 @@ export function getSizingOptions(table: TableState | null, legal: LegalActions):
       options.push({ label: fraction.label, raiseTo });
     }
   }
-  options.push({ label: 'All-in', raiseTo: legal.maxRaiseTo });
+  // The ceiling is a shove in no-limit, but in pot-limit it is simply the pot, so label it
+  // for what it actually is.
+  options.push({ label: legal.canAllIn ? 'All-in' : 'Pot Max', raiseTo: legal.maxRaiseTo });
 
   const seen = new Set<number>();
   return options.filter((option) => {

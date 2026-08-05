@@ -16,6 +16,7 @@ function card(id: string): Card {
 function tableWith(overrides: Partial<TableState> = {}): TableState {
   return {
     id: 't',
+    variant: 'nlh',
     smallBlind: 0.5,
     bigBlind: 1,
     buttonIndex: 0,

@@ -12,6 +12,8 @@ interface TableListing {
   };
   speed: 'standard' | 'fast' | 'turbo';
   playersSeated: number;
+  variant: 'nlh' | 'plo';
+  variantLabel: string;
 }
 
 interface Tournament {
@@ -106,7 +108,7 @@ export default function LobbyScreen() {
       <View style={styles.header}>
         <Text style={styles.eyebrow}>POKER LOBBY</Text>
         <Text style={styles.title}>Find your table</Text>
-        <Text style={styles.subtitle}>Server-dealt Hold’em cash games and tournaments.</Text>
+        <Text style={styles.subtitle}>Server-dealt No-Limit Hold’em and Pot-Limit Omaha cash games and tournaments.</Text>
       </View>
 
       <View style={styles.filtersRow}>
@@ -146,9 +148,11 @@ export default function LobbyScreen() {
             <View style={styles.left}>
               <Text style={styles.tableName}>{table.id}</Text>
               <Text style={styles.detail}>${table.stake.smallBlind} / ${table.stake.bigBlind}</Text>
+              <Text style={styles.variantLabel}>{table.variantLabel}</Text>
             </View>
             <View style={styles.right}>
-              <Text style={styles.badge}>{table.speed}</Text>
+              <Text style={styles.badge}>{table.variant.toUpperCase()}</Text>
+              <Text style={styles.detail}>{table.speed}</Text>
               <Text style={styles.detail}>{table.playersSeated} seated</Text>
             </View>
           </Pressable>
@@ -232,6 +236,7 @@ const styles = StyleSheet.create({
   left: { gap: 4 },
   right: { alignItems: 'flex-end', gap: 4 },
   tableName: { color: '#FFF4E7', fontSize: 18, fontWeight: '700' },
+  variantLabel: { color: '#B99D93', fontSize: 12, fontWeight: '600' },
   detail: { color: '#B99D93', fontSize: 13 },
   badge: { color: '#F1C46E', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
 });

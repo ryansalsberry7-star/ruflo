@@ -2,6 +2,24 @@ import { z } from 'zod';
 
 export type EnvironmentMode = 'play-money' | 'real-money-disabled';
 
+/**
+ * Supported game types.
+ *
+ * 'nlh' — No-Limit Hold'em: 2 hole cards, best five of the seven available, bets capped
+ * only by the stack.
+ * 'plo' — Pot-Limit Omaha: 4 hole cards, and a hand MUST use exactly two of them with
+ * exactly three board cards. Raises are capped at the size of the pot.
+ */
+export type GameVariant = 'nlh' | 'plo';
+
+export const GAME_VARIANT_LABELS: Record<GameVariant, string> = {
+  nlh: "No-Limit Hold'em",
+  plo: 'Pot-Limit Omaha',
+};
+
+/** Hole cards dealt per player. The 2-vs-4 split is what distinguishes the two games. */
+export const HOLE_CARD_COUNT: Record<GameVariant, number> = { nlh: 2, plo: 4 };
+
 export interface StakeLevel {
   id: string;
   smallBlind: number;

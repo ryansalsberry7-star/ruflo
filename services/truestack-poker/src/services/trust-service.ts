@@ -225,7 +225,10 @@ export class TrustService {
     protections: string[];
   } {
     return {
-      promise: 'No bots. No house players. Real opponents only.',
+      // States what the platform actually enforces. An absolute "no bots" claim is not
+      // one any operator can guarantee, and it is not what the anti-cheat stack below
+      // does -- it detects and acts on automated play rather than preventing it outright.
+      promise: 'Zero rake. Every chip in the pot goes to players. Automated play is monitored and actioned.',
       noUndisclosedAiPlayers: true,
       antiCheatArchitecture: [
         'Server-side behavior fingerprinting',

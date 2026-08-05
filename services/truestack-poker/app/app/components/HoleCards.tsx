@@ -42,16 +42,28 @@ interface HoleCardsProps {
   /** Rendered face-down when the hand is not the viewer's own. */
   faceDown?: boolean;
   size?: 'sm' | 'md' | 'lg';
+  /** How many backs to show when face-down: 2 for Hold'em, 4 for Omaha. */
+  cardCount?: number;
 }
 
-export function HoleCards({ cards, deckMode, faceDown = false, size = 'md' }: HoleCardsProps) {
+/** Fan the cards slightly. Two cards splay; four sit nearly flat so they still fit a pod. */
+function tiltFor(index: number, total: number): { transform: [{ rotate: string }] } {
+  if (total <= 1) return { transform: [{ rotate: '0deg' }] };
+  const spread = total > 2 ? 4 : 6;
+  const step = (spread * 2) / (total - 1);
+  return { transform: [{ rotate: `${-spread + index * step}deg` }] };
+}
+
+export function HoleCards({ cards, deckMode, faceDown = false, size = 'md', cardCount = 2 }: HoleCardsProps) {
   const dims = size === 'lg' ? cardDims.lg : size === 'sm' ? cardDims.sm : cardDims.md;
 
   if (faceDown || cards.length === 0) {
+    const backs = Math.max(1, cardCount);
     return (
       <View style={styles.row}>
-        <View style={[styles.card, dims, styles.cardBack, styles.tiltLeft]} />
-        <View style={[styles.card, dims, styles.cardBack, styles.tiltRight]} />
+        {Array.from({ length: backs }, (_, index) => (
+          <View key={index} style={[styles.card, dims, styles.cardBack, tiltFor(index, backs)]} />
+        ))}
       </View>
     );
   }
@@ -59,7 +71,7 @@ export function HoleCards({ cards, deckMode, faceDown = false, size = 'md' }: Ho
   return (
     <View style={styles.row}>
       {cards.map((card, index) => (
-        <View key={`${card}-${index}`} style={index === 0 ? styles.tiltLeft : styles.tiltRight}>
+        <View key={`${card}-${index}`} style={tiltFor(index, cards.length)}>
           <CardFace id={card} deckMode={deckMode} size={size} />
         </View>
       ))}

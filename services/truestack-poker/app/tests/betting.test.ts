@@ -27,6 +27,7 @@ function seat(overrides: Partial<TablePlayer> = {}): TablePlayer {
 function table(overrides: Partial<TableState> = {}, players: TablePlayer[] = [seat()]): TableState {
   return {
     id: 't1',
+    variant: 'nlh',
     currentStreet: 'flop',
     pot: 10,
     players,
@@ -137,4 +138,34 @@ test('call-any commits everything when the bet exceeds the stack', () => {
 
 test('no pre-action resolves to no action', () => {
   assert.equal(resolvePreAction(null, getLegalActions(table(), 'hero')), null);
+});
+
+test('pot-limit caps the raise ceiling at the pot while no-limit allows a full shove', () => {
+  const deepStack = [seat({ stack: 500 })];
+  const shape = { pot: 20, currentBet: 10, minRaise: 10 };
+
+  const nlh = getLegalActions(table({ ...shape, variant: 'nlh' }, deepStack), 'hero');
+  const plo = getLegalActions(table({ ...shape, variant: 'plo' }, deepStack), 'hero');
+
+  // No-limit tops out at the stack; pot-limit at currentBet 10 + (pot 20 + toCall 10) = 40.
+  assert.equal(nlh.maxRaiseTo, 500);
+  assert.equal(plo.maxRaiseTo, 40);
+  assert.ok(plo.maxRaiseTo < nlh.maxRaiseTo);
+});
+
+test('a deep stack cannot shove under pot limit, so the all-in option is withheld', () => {
+  const deep = table({ pot: 20, currentBet: 10, minRaise: 10, variant: 'plo' }, [seat({ stack: 500 })]);
+  const legal = getLegalActions(deep, 'hero');
+  assert.equal(legal.canAllIn, false, 'a stack deeper than the pot has no legal shove');
+
+  // The ceiling chip must say what it actually is rather than promising an all-in.
+  const options = getSizingOptions(deep, legal);
+  assert.equal(options[options.length - 1].label, 'Pot Max');
+});
+
+test('a short stack can still shove under pot limit', () => {
+  const short = table({ pot: 200, currentBet: 2, minRaise: 2, variant: 'plo' }, [seat({ stack: 6 })]);
+  const legal = getLegalActions(short, 'hero');
+  assert.equal(legal.canAllIn, true, 'a stack shallower than the pot can commit everything');
+  assert.equal(legal.maxRaiseTo, 6);
 });

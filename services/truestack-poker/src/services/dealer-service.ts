@@ -77,6 +77,8 @@ export class DealerService {
     buttonIndex: number;
     smallBlind: number;
     bigBlind: number;
+    /** Hole cards per player: 2 for Hold'em, 4 for Omaha. Defaults to Hold'em. */
+    holeCardCount?: number;
   }): DealerHandState {
     const deck = this.createShuffledDeck();
     const handId = `${input.tableId}-${Date.now()}-${randomInt(1000, 9999)}`;
@@ -85,8 +87,11 @@ export class DealerService {
     const holeCardsByPlayer: Record<string, Card[]> = {};
     for (const playerId of input.players) holeCardsByPlayer[playerId] = [];
 
+    // Dealt one card at a time around the table, as at a live table, so the deal order is
+    // faithful in the replay record rather than handing each player a contiguous block.
+    const holeCardCount = input.holeCardCount ?? 2;
     let drawIndex = 0;
-    for (let round = 0; round < 2; round += 1) {
+    for (let round = 0; round < holeCardCount; round += 1) {
       for (const playerId of input.players) {
         holeCardsByPlayer[playerId].push(deck[drawIndex]);
         drawIndex += 1;
@@ -115,7 +120,7 @@ export class DealerService {
         type: 'hole_cards_dealt',
         payload: {
           recipients: input.players,
-          cardCountEach: 2,
+          cardCountEach: holeCardCount,
         },
       },
     ];

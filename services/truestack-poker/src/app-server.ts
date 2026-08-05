@@ -155,7 +155,17 @@ export function buildDefaultServices(options: BuildServicesOptions = {}): Platfo
   poker.createCashTable(
     'cash-aurora',
     'micro-1',
-    initialUsers.map((entry) => ({ id: entry.id, name: entry.username, stack: 1000 }))
+    initialUsers.map((entry) => ({ id: entry.id, name: entry.username, stack: 1000 })),
+    false,
+    'nlh'
+  );
+
+  poker.createCashTable(
+    'cash-omaha',
+    'micro-1',
+    initialUsers.map((entry) => ({ id: entry.id, name: entry.username, stack: 1000 })),
+    false,
+    'plo'
   );
 
   // Simulated opponents are strictly opt-in for local testing. BotService itself refuses
@@ -464,9 +474,6 @@ async function routeRequest(
       fairPlay: {
         handVerification: 'enabled',
         antiCheat: ['bot-detection', 'multi-account-monitoring', 'collusion-monitoring', 'suspicious-gameplay-monitoring'],
-        // Must reflect reality: claiming no house players while dev bots are seated would
-        // make the transparency endpoint lie. It reports true only when none are running.
-        noHousePlayers: services.bots === null,
         ...(services.bots
           ? {
               simulatedOpponentsActive: true,
