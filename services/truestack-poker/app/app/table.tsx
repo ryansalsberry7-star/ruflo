@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
 import { ActionBar } from './components/ActionBar';
 import { HoleCards } from './components/HoleCards';
-import { BetChips, PotChips } from './components/Chips';
+import { BetChips, ChipPile, PotChips } from './components/Chips';
 import { DealerStage } from './components/live-dealer/DealerStage';
 import { useDealerController } from './components/live-dealer/dealerController';
 import { useAuth } from './lib/auth';
@@ -117,31 +117,6 @@ function PulseRing(): JSX.Element {
   );
 }
 
-function ChipStack({ size = 'sm' }: { size?: 'sm' | 'lg' }): JSX.Element {
-  const large = size === 'lg';
-  const w = large ? 26 : 18;
-  const h = large ? 7 : 5;
-  return (
-    <View style={{ width: w, height: h * 3 + 4, justifyContent: 'flex-end' }}>
-      {['#1E1E24', '#1F7A44', '#B03B3B'].map((c, i) => (
-        <View
-          key={c}
-          style={{
-            position: 'absolute',
-            bottom: i * (h - 1),
-            width: w,
-            height: h,
-            borderRadius: h,
-            backgroundColor: c,
-            borderWidth: 1,
-            borderColor: 'rgba(241,196,110,0.4)',
-          }}
-        />
-      ))}
-    </View>
-  );
-}
-
 interface SeatPodProps {
   player: TablePlayer | null;
   isHero: boolean;
@@ -188,7 +163,7 @@ function SeatPod({
           <View style={[seatStyles.holeBack, seatStyles.holeBackTiltLeft]} />
           <View style={[seatStyles.holeBack, seatStyles.holeBackTiltRight]} />
         </View>
-        <View style={[seatStyles.plate, seatStyles.emptyPlate, inviting && seatStyles.invitingPlate]}>
+        <View style={[seatStyles.plate, { width: podWidth }, seatStyles.emptyPlate, inviting && seatStyles.invitingPlate]}>
           <View style={[seatStyles.emptyAvatar, inviting && seatStyles.invitingAvatar]}>
             <Text style={[seatStyles.emptyPlus, inviting && seatStyles.invitingPlus]}>+</Text>
           </View>
@@ -225,7 +200,7 @@ function SeatPod({
           <Text style={seatStyles.lastActionText}>{lastAction}</Text>
         </View>
       ) : null}
-      <View style={[seatStyles.plate, isHero && seatStyles.heroPlate, isTurn && seatStyles.turnPlate]}>
+      <View style={[seatStyles.plate, { width: podWidth }, isHero && seatStyles.heroPlate, isTurn && seatStyles.turnPlate]}>
         <View style={seatStyles.avatarRing}>
           <View style={[seatStyles.avatarAccentRing, { borderColor: character.accent }]}>
             <View style={[seatStyles.avatar, { backgroundColor: character.aura }]}>
@@ -254,10 +229,7 @@ function SeatPod({
             <Text style={seatStyles.botTagText}>BOT</Text>
           </View>
         ) : null}
-        <View style={seatStyles.stackRow}>
-          <ChipStack />
-          <Text style={seatStyles.stack}>${player.stack.toFixed(0)}</Text>
-        </View>
+        <ChipPile amount={player.stack} size={7} columns={1} />
         <Text style={[seatStyles.status, isTurn && seatStyles.statusActive]}>{status}</Text>
       </View>
     </View>
@@ -557,9 +529,10 @@ export default function TableScreen() {
 
   const tableWidth = Math.min(windowWidth - 20, 600);
   const tableHeight = Math.round(tableWidth * 0.72);
-  // Nine pods ring the felt; at 80px fixed they overlapped badly on a phone. Scaling with
-  // the felt keeps them legible on a tablet and non-colliding on a narrow screen.
-  const podWidth = Math.max(52, Math.min(80, Math.round(tableWidth / 4.8)));
+  // Nine pods ring the felt. The tightest gap between adjacent seat slots (the left/right
+  // side pairs) is ~70px on a typical phone width, so pods need to stay well under that —
+  // the previous /4.8 divisor produced up to 80px pods that overlapped their neighbors.
+  const podWidth = Math.max(42, Math.min(58, Math.round(tableWidth / 7)));
   const seated = !!mySeat;
   const heroCharacter = getPlayerCharacter(user.playerCharacter);
   const effectiveHeroSlot = seated ? heroSlot ?? 0 : null;
@@ -717,7 +690,7 @@ export default function TableScreen() {
                 key={index}
                 style={[
                   feltStyles.seatAnchor,
-                  { left: slot.x * tableWidth - podWidth / 2, top: slot.y * tableHeight - 56 },
+                  { left: slot.x * tableWidth - podWidth / 2, top: slot.y * tableHeight - 42 },
                 ]}
               >
                 <SeatPod
@@ -1235,7 +1208,7 @@ const feltStyles = StyleSheet.create({
     width: 52,
     alignItems: 'center',
   },
-  seatAnchor: { position: 'absolute', width: 80, alignItems: 'center' },
+  seatAnchor: { position: 'absolute', width: 58, alignItems: 'center' },
   tableCaption: { color: '#8FA6CC', fontSize: 12, textAlign: 'center', marginTop: 30 },
 });
 
@@ -1269,64 +1242,64 @@ const seatStyles = StyleSheet.create({
     borderColor: '#6E67A8',
     borderWidth: 1,
     borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    marginTop: 2,
+    paddingHorizontal: 4,
+    paddingVertical: 0.5,
+    marginTop: 1,
   },
-  botTagText: { color: '#B9B2E8', fontSize: 8, fontWeight: '900', letterSpacing: 0.8 },
+  botTagText: { color: '#B9B2E8', fontSize: 7, fontWeight: '900', letterSpacing: 0.6 },
   lastActionPill: {
     backgroundColor: '#3A1E22',
     borderColor: '#8A6A45',
     borderWidth: 1,
     borderRadius: 999,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
     marginTop: 1,
   },
-  lastActionText: { color: '#F1C46E', fontSize: 9, fontWeight: '800', letterSpacing: 0.4 },
+  lastActionText: { color: '#F1C46E', fontSize: 8, fontWeight: '800', letterSpacing: 0.3 },
   pod: {
-    width: 80,
+    width: 58,
     alignItems: 'center',
     gap: 1,
-    paddingVertical: 4,
-    paddingHorizontal: 2,
+    paddingVertical: 2,
+    paddingHorizontal: 1,
   },
   pressedPod: { opacity: 0.6, transform: [{ scale: 0.96 }] },
-  cardsRow: { flexDirection: 'row', gap: 4, height: 22, marginBottom: -2, zIndex: 2 },
-  holeBack: { width: 16, height: 22, borderRadius: 3, backgroundColor: '#17345B', borderWidth: 1, borderColor: '#4C86D3' },
+  cardsRow: { flexDirection: 'row', gap: 3, height: 18, marginBottom: -2, zIndex: 2 },
+  holeBack: { width: 13, height: 18, borderRadius: 2, backgroundColor: '#17345B', borderWidth: 1, borderColor: '#4C86D3' },
   holeBackTiltLeft: { transform: [{ rotate: '-18deg' }] },
   holeBackTiltRight: { transform: [{ rotate: '16deg' }] },
   // Flat nameplate rather than an illustrated armchair — reads as a real table's seat
-  // marker instead of a cartoon chair icon.
+  // marker instead of a cartoon chair icon. Width is overridden per-seat via podWidth so
+  // nine of these fit around the felt without overlapping their neighbors.
   plate: {
-    width: 72,
-    minHeight: 74,
-    borderRadius: 14,
+    minHeight: 58,
+    borderRadius: 12,
     backgroundColor: 'rgba(18,7,10,0.78)',
     borderWidth: 1.5,
     borderColor: 'rgba(241,196,110,0.32)',
     alignItems: 'center',
     justifyContent: 'flex-start',
-    paddingTop: 8,
-    paddingBottom: 6,
-    paddingHorizontal: 4,
-    gap: 3,
+    paddingTop: 5,
+    paddingBottom: 3,
+    paddingHorizontal: 2,
+    gap: 1.5,
     shadowColor: '#000',
     shadowOpacity: 0.3,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
   },
   heroPlate: {
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: colors.gold,
     backgroundColor: 'rgba(42,17,24,0.86)',
   },
   turnPlate: {
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: colors.gold,
     shadowColor: colors.gold,
     shadowOpacity: 0.45,
-    shadowRadius: 8,
+    shadowRadius: 6,
   },
   emptyPlate: {
     backgroundColor: 'rgba(18,7,10,0.5)',
@@ -1341,85 +1314,84 @@ const seatStyles = StyleSheet.create({
   // Three concentric rings: brass (unified across every seat), the character's own
   // accent (keeps a sliver of persona identity), then the aura fill behind the emoji.
   avatarRing: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.5,
     borderColor: colors.gold,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarAccentRing: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1.5,
+    width: 19,
+    height: 19,
+    borderRadius: 10,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatar: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  avatarEmoji: { fontSize: 12, lineHeight: 14 },
+  avatarEmoji: { fontSize: 8, lineHeight: 9 },
   trustShield: {
     position: 'absolute',
-    right: -3,
-    bottom: -3,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    right: -2,
+    bottom: -2,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: '#3A2414',
     borderWidth: 1,
     borderColor: '#E7C57D',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  trustShieldText: { color: '#F9E8BD', fontSize: 7, fontWeight: '900' },
+  trustShieldText: { color: '#F9E8BD', fontSize: 6, fontWeight: '900' },
   dealerButton: {
     position: 'absolute',
-    right: -5,
-    top: -5,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    right: -4,
+    top: -4,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: '#F3E9D2',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#2A1118',
   },
-  dealerButtonText: { color: '#2A1118', fontSize: 9, fontWeight: '900' },
+  dealerButtonText: { color: '#2A1118', fontSize: 7, fontWeight: '900' },
   pulseRing: { position: 'absolute', top: 8, left: 1, right: 1, bottom: 16, borderRadius: 36, borderWidth: 2, borderColor: '#F1C46E' },
   nameTag: {
-    borderRadius: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
+    borderRadius: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 0.5,
     backgroundColor: 'rgba(0,0,0,0.28)',
     borderWidth: 1,
-    marginTop: 2,
+    marginTop: 1,
+    maxWidth: '100%',
   },
-  name: { color: '#FFF4E7', fontSize: 10, fontWeight: '800', maxWidth: 64, textAlign: 'center' },
-  stackRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: -1 },
-  stack: { color: '#F8E0A0', fontSize: 10, fontWeight: '900' },
-  status: { color: 'rgba(255,244,231,0.55)', fontSize: 9, fontWeight: '800', marginTop: 1 },
+  name: { color: '#FFF4E7', fontSize: 8, fontWeight: '800', maxWidth: '100%', textAlign: 'center' },
+  status: { color: 'rgba(255,244,231,0.55)', fontSize: 7, fontWeight: '800', marginTop: 0.5 },
   statusActive: { color: colors.gold },
   emptyAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.goldDim,
     borderStyle: 'dashed',
   },
-  emptyPlus: { color: colors.goldDim, fontSize: 16, fontWeight: '900' },
-  emptyLabel: { color: colors.textFaint, fontSize: 9, fontWeight: '800', textAlign: 'center' },
+  emptyPlus: { color: colors.goldDim, fontSize: 13, fontWeight: '900' },
+  emptyLabel: { color: colors.textFaint, fontSize: 7, fontWeight: '800', textAlign: 'center' },
   invitingAvatar: { borderColor: colors.gold, borderStyle: 'solid' },
   invitingPlus: { color: colors.gold },
   invitingLabel: { color: colors.gold, fontWeight: '900' },
