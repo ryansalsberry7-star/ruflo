@@ -55,7 +55,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#17090D"
         }
-      ]
+      ],
+      "./plugins/withFmtConstevalFix.js"
     ]
   }
 }
