@@ -13,7 +13,7 @@ import { useAuth } from './lib/auth';
 import { getJson, postJson, resolveWebSocketBaseUrl } from './lib/api';
 import { getPlayerCharacter, resolveCharacterId } from './lib/playerIdentity';
 import { useTablePreferences } from './lib/tablePreferences';
-import { colors, fontSize, numericFont } from './lib/theme';
+import { colors, displayFont, displayFontSemibold, fontSize, numericFont } from './lib/theme';
 import type { DeckColorMode } from './lib/theme';
 import { formatChips, getLegalActions } from './lib/betting';
 import type { ActionKind, GameVariant, TablePlayer, TableState } from './lib/betting';
@@ -1025,7 +1025,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   gearText: { color: colors.gold, fontSize: 17 },
-  title: { color: colors.text, fontSize: fontSize.display, fontWeight: '900' },
+  title: { color: colors.text, fontSize: fontSize.display, fontWeight: '900', ...displayFont },
   consoleShelf: {
     marginHorizontal: 8,
     borderWidth: 1,
@@ -1075,7 +1075,7 @@ const styles = StyleSheet.create({
   windowDotRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.textFaint },
   liveDotOn: { backgroundColor: colors.mint, shadowColor: colors.mint, shadowOpacity: 0.9, shadowRadius: 6 },
-  stripText: { color: colors.textMuted, fontSize: fontSize.md, fontWeight: '800', letterSpacing: 0.8 },
+  stripText: { color: colors.textMuted, fontSize: fontSize.md, fontWeight: '800', letterSpacing: 0.8, ...displayFontSemibold },
   stripDivider: { color: colors.textFaint, fontSize: fontSize.base },
   stripTimer: { color: colors.mint, fontSize: fontSize.base, fontWeight: '900', ...numericFont },
   audioPanel: {

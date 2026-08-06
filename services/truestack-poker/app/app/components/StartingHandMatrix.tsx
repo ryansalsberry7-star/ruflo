@@ -1,6 +1,6 @@
 import { memo, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { colors } from '../lib/theme';
+import { colors, displayFontSemibold } from '../lib/theme';
 import type { GameVariant } from '../lib/betting';
 import {
   NLH_HANDS,
@@ -371,7 +371,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  collapsedTitle: { color: colors.text, fontSize: 14, fontWeight: '800' },
+  collapsedTitle: { color: colors.text, fontSize: 14, fontWeight: '800', ...displayFontSemibold },
   collapsedInsight: { color: colors.mint, fontSize: 10, fontWeight: '700', marginTop: 2 },
   chevron: { color: colors.gold, fontSize: 16, fontWeight: '900' },
   chevronDown: { transform: [{ rotate: '90deg' }] },
@@ -385,7 +385,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerTitle: { color: colors.text, fontSize: 14, fontWeight: '800' },
+  headerTitle: { color: colors.text, fontSize: 14, fontWeight: '800', ...displayFontSemibold },
   disclaimer: { color: colors.textFaint, fontSize: 10, lineHeight: 14 },
   chipScroll: { flexGrow: 0 },
   positionRow: { flexDirection: 'row', gap: 6 },

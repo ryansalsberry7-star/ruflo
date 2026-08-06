@@ -73,14 +73,21 @@ export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const;
 /**
  * Tabular numeric style for stacks, pots, blinds, and timers -- money and countdowns
  * should line up and hold a fixed width as digits change, not reflow with the
- * proportional body font. No condensed/grotesk display typeface is bundled yet (that
- * needs an actual font file + expo-font setup once a specific face is chosen); this is
- * the piece of the typography direction that's achievable with the system font today.
+ * proportional body font.
  */
 export const numericFont: TextStyle = {
   fontVariant: ['tabular-nums'],
   fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
 };
+
+/**
+ * Condensed display face for headers/titles -- the "sports-broadcast" register from the
+ * brief, as distinct from numericFont (data) and the system font (body/UI labels).
+ * Bundled via @expo-google-fonts/barlow-condensed; RootLayout gates first render on
+ * useFonts() loading these two weights before anything mounts.
+ */
+export const displayFont: TextStyle = { fontFamily: 'BarlowCondensed_900Black', letterSpacing: 0.4 };
+export const displayFontSemibold: TextStyle = { fontFamily: 'BarlowCondensed_700Bold' };
 
 /**
  * Type scale. The table screen had accumulated 16 distinct one-off `fontSize` values

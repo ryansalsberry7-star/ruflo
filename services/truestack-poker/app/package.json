@@ -12,6 +12,7 @@
     "test": "tsx --test tests/**/*.test.ts"
   },
   "dependencies": {
+    "@expo-google-fonts/barlow-condensed": "^0.4.1",
     "@expo/metro-runtime": "~4.0.1",
     "@react-three/fiber": "^8.17.10",
     "expo": "~52.0.0",
