@@ -868,7 +868,7 @@ export default function TableScreen() {
               />
             </View>
 
-            <View style={[feltStyles.board, { top: tableHeight * 0.44 }]}>
+            <View style={[feltStyles.board, { top: tableHeight * 0.3 }]}>
               <Animated.View style={[feltStyles.potPill, { transform: [{ scale: potPulse }] }]}>
                 <Text style={feltStyles.potLabel}>
                   Pot <Text style={feltStyles.potText}>${table?.pot.toFixed(2) ?? '0.00'}</Text>
