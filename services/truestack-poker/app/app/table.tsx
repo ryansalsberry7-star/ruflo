@@ -36,18 +36,21 @@ const MAX_SEATS = 9;
 /** Mirrors the gateway's turnActionMs default; drives the action-bar timer bar. */
 const TURN_ACTION_SECONDS = 20;
 
-// Seat centre positions as fractions of the felt, placed on the oval rim so pods
-// hug the edge. Slot 0 is the hero, bottom-centre; the rest ring clockwise.
+// Seat centre positions as fractions of the felt, placed on the oval rim so pods hug the
+// edge. Slot 0 is the hero, bottom-centre; the rest ring clockwise at even 40° steps
+// around an ellipse — the previous hand-tuned points bunched the side pairs (slots 1-2
+// and 7-8) close enough together (~69px on a phone) that seats overlapped there even
+// after shrinking pod width. Uniform angular spacing widens every gap to ~74-85px.
 const SEAT_SLOTS = [
-  { x: 0.5, y: 0.83 },
-  { x: 0.2, y: 0.75 },
-  { x: 0.09, y: 0.55 },
-  { x: 0.13, y: 0.26 },
-  { x: 0.35, y: 0.11 },
-  { x: 0.65, y: 0.11 },
-  { x: 0.87, y: 0.26 },
-  { x: 0.91, y: 0.55 },
-  { x: 0.8, y: 0.75 },
+  { x: 0.5, y: 0.85 },
+  { x: 0.23, y: 0.76 },
+  { x: 0.086, y: 0.531 },
+  { x: 0.136, y: 0.27 },
+  { x: 0.356, y: 0.1 },
+  { x: 0.644, y: 0.1 },
+  { x: 0.864, y: 0.27 },
+  { x: 0.914, y: 0.531 },
+  { x: 0.77, y: 0.76 },
 ];
 
 const SUIT_META: Record<string, { symbol: string; color: string }> = {
@@ -159,10 +162,8 @@ function SeatPod({
         disabled={!onSit}
         style={({ pressed }) => [seatStyles.pod, { width: podWidth }, pressed && seatStyles.pressedPod]}
       >
-        <View style={seatStyles.cardsRow}>
-          <View style={[seatStyles.holeBack, seatStyles.holeBackTiltLeft]} />
-          <View style={[seatStyles.holeBack, seatStyles.holeBackTiltRight]} />
-        </View>
+        {/* No decorative card backs here — an empty seat has no cards, and at 9-max the
+            extra height is what was making pods crowd their neighbors. */}
         <View style={[seatStyles.plate, { width: podWidth }, seatStyles.emptyPlate, inviting && seatStyles.invitingPlate]}>
           <View style={[seatStyles.emptyAvatar, inviting && seatStyles.invitingAvatar]}>
             <Text style={[seatStyles.emptyPlus, inviting && seatStyles.invitingPlus]}>+</Text>
@@ -172,13 +173,9 @@ function SeatPod({
       </Pressable>
     );
   }
-  const status = player.folded
-    ? 'Folded'
-    : player.allIn
-      ? 'All-in'
-      : isTurn
-        ? 'Acting\u2026'
-        : 'Active';
+  // "Active" is the default/uninteresting state for most seats most of the time, so it's
+  // omitted entirely rather than costing every seat a line of height for no information.
+  const status = player.folded ? 'Folded' : player.allIn ? 'All-in' : isTurn ? 'Acting\u2026' : null;
   const character = getPlayerCharacter(resolveCharacterId(characterId, player.name));
   return (
     <View style={[seatStyles.pod, { width: podWidth }]}>
@@ -230,7 +227,7 @@ function SeatPod({
           </View>
         ) : null}
         <ChipPile amount={player.stack} size={7} columns={1} />
-        <Text style={[seatStyles.status, isTurn && seatStyles.statusActive]}>{status}</Text>
+        {status ? <Text style={[seatStyles.status, isTurn && seatStyles.statusActive]}>{status}</Text> : null}
       </View>
     </View>
   );
@@ -690,7 +687,7 @@ export default function TableScreen() {
                 key={index}
                 style={[
                   feltStyles.seatAnchor,
-                  { left: slot.x * tableWidth - podWidth / 2, top: slot.y * tableHeight - 42 },
+                  { left: slot.x * tableWidth - podWidth / 2, top: slot.y * tableHeight - 30 },
                 ]}
               >
                 <SeatPod
@@ -1265,25 +1262,25 @@ const seatStyles = StyleSheet.create({
     paddingHorizontal: 1,
   },
   pressedPod: { opacity: 0.6, transform: [{ scale: 0.96 }] },
-  cardsRow: { flexDirection: 'row', gap: 3, height: 18, marginBottom: -2, zIndex: 2 },
-  holeBack: { width: 13, height: 18, borderRadius: 2, backgroundColor: '#17345B', borderWidth: 1, borderColor: '#4C86D3' },
-  holeBackTiltLeft: { transform: [{ rotate: '-18deg' }] },
-  holeBackTiltRight: { transform: [{ rotate: '16deg' }] },
+  // Height matches HoleCards' 'sm' preset (24px) so this row's layout allocation matches
+  // what actually renders — it previously under-declared height, which let opponent
+  // cards silently bleed into the plate below.
+  cardsRow: { flexDirection: 'row', gap: 3, height: 24, marginBottom: -2, zIndex: 2 },
   // Flat nameplate rather than an illustrated armchair — reads as a real table's seat
   // marker instead of a cartoon chair icon. Width is overridden per-seat via podWidth so
   // nine of these fit around the felt without overlapping their neighbors.
   plate: {
-    minHeight: 58,
-    borderRadius: 12,
+    minHeight: 46,
+    borderRadius: 10,
     backgroundColor: 'rgba(18,7,10,0.78)',
     borderWidth: 1.5,
     borderColor: 'rgba(241,196,110,0.32)',
     alignItems: 'center',
     justifyContent: 'flex-start',
-    paddingTop: 5,
-    paddingBottom: 3,
+    paddingTop: 3,
+    paddingBottom: 2,
     paddingHorizontal: 2,
-    gap: 1.5,
+    gap: 1,
     shadowColor: '#000',
     shadowOpacity: 0.3,
     shadowRadius: 4,
@@ -1314,31 +1311,31 @@ const seatStyles = StyleSheet.create({
   // Three concentric rings: brass (unified across every seat), the character's own
   // accent (keeps a sliver of persona identity), then the aura fill behind the emoji.
   avatarRing: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     borderWidth: 1.5,
     borderColor: colors.gold,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarAccentRing: {
-    width: 19,
-    height: 19,
-    borderRadius: 10,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatar: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 11,
+    height: 11,
+    borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  avatarEmoji: { fontSize: 8, lineHeight: 9 },
+  avatarEmoji: { fontSize: 7, lineHeight: 8 },
   trustShield: {
     position: 'absolute',
     right: -2,

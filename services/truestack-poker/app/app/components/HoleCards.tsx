@@ -80,7 +80,9 @@ export function HoleCards({ cards, deckMode, faceDown = false, size = 'md', card
 }
 
 const cardDims = {
-  sm: { width: 22, height: 32 },
+  // 9-max seats around a phone-width felt only have ~70-85px of clearance between
+  // neighbors, so opponent card backs stay small — see table.tsx SEAT_SLOTS.
+  sm: { width: 16, height: 24 },
   md: { width: 30, height: 43 },
   lg: { width: 42, height: 60 },
 };
