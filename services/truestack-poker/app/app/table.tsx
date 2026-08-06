@@ -128,6 +128,26 @@ function PulseRing({ color = colors.mint, duration = 1100 }: { color?: string; d
   );
 }
 
+const STREET_ORDER = ['preflop', 'flop', 'turn', 'river'] as const;
+
+/** Clean four-step progression instead of a single word -- reads at a glance where a
+ *  hand stands without requiring the viewer to parse street names. */
+function StreetTimeline({ street }: { street?: string }) {
+  const idx = street === 'showdown' ? STREET_ORDER.length : Math.max(0, STREET_ORDER.indexOf(street as (typeof STREET_ORDER)[number]));
+  return (
+    <View style={feltStyles.streetTimeline}>
+      {STREET_ORDER.map((step, index) => (
+        <View key={step} style={feltStyles.streetTimelineItem}>
+          <View style={[feltStyles.streetDot, index <= idx && feltStyles.streetDotDone]} />
+          {index < STREET_ORDER.length - 1 ? (
+            <View style={[feltStyles.streetLine, index < idx && feltStyles.streetLineDone]} />
+          ) : null}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 interface SeatPodProps {
   player: TablePlayer | null;
   isHero: boolean;
@@ -559,6 +579,19 @@ export default function TableScreen() {
       ? `${(((table?.pot ?? 0) + heroLegal.amountToCall) / heroLegal.amountToCall).toFixed(1)}:1`
       : null;
 
+  // SPR and effective stack describe the hand's overall risk profile from the first
+  // action, not just when facing a bet -- unlike pot odds, which is only actionable
+  // information at the moment of a decision.
+  const liveOpponentStacks = table
+    ? table.players.filter((player) => player.id !== user?.userId && !player.folded).map((player) => player.stack)
+    : [];
+  const effectiveStack =
+    mySeat && liveOpponentStacks.length > 0 ? Math.min(mySeat.stack, Math.max(...liveOpponentStacks)) : null;
+  const showHandRisk = !!table && !!mySeat && !mySeat.folded && table.pot > 0 && effectiveStack !== null;
+  const sprLabel = showHandRisk ? (effectiveStack! / table!.pot).toFixed(1) : null;
+  const effectiveStackBBLabel =
+    showHandRisk && table!.bigBlind ? `${(effectiveStack! / table!.bigBlind).toFixed(1)} BB` : null;
+
   const variant: GameVariant = table?.variant === 'plo' ? 'plo' : 'nlh';
   const heroInHand = !!mySeat && !mySeat.folded;
   const activeOpponentCount = table
@@ -801,7 +834,11 @@ export default function TableScreen() {
                   ? communityCards.map((card, index) => <DealtCard key={`${card}-${index}`} id={card} index={index} />)
                   : [0, 1, 2, 3, 4].map((slot) => <PlayingCard key={slot} faceDown />)}
               </View>
-              <Text style={feltStyles.streetText}>{(table?.currentStreet ?? 'waiting').toUpperCase()}</Text>
+              {table?.currentStreet ? (
+                <StreetTimeline street={table.currentStreet} />
+              ) : (
+                <Text style={feltStyles.streetText}>WAITING</Text>
+              )}
             </View>
 
             {/* Chips each player has pushed forward this street, drawn between their seat
@@ -934,6 +971,22 @@ export default function TableScreen() {
             </View>
           ) : null}
         </View>
+        {/* SPR and effective stack describe the hand's overall risk from the first
+            action -- a second row rather than crowding them into the row above, which
+            is either always-on trivia (seat count) or only relevant at a decision
+            (pot odds). */}
+        {sprLabel && effectiveStackBBLabel ? (
+          <View style={[styles.statsRow, styles.statsRowSecondary]}>
+            <View style={styles.statTile}>
+              <Text style={styles.statLabel}>SPR</Text>
+              <Text style={styles.statValue}>{sprLabel}</Text>
+            </View>
+            <View style={styles.statTile}>
+              <Text style={styles.statLabel}>Eff. stack</Text>
+              <Text style={styles.statValue}>{effectiveStackBBLabel}</Text>
+            </View>
+          </View>
+        ) : null}
       </View>
 
       <StartingHandMatrix variant={table?.variant ?? 'nlh'} defaultExpanded />
@@ -1058,6 +1111,7 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   statsRow: { flexDirection: 'row', gap: 8 },
+  statsRowSecondary: { marginTop: 8 },
   statTile: {
     flex: 1,
     borderWidth: 1,
@@ -1160,11 +1214,24 @@ const feltStyles = StyleSheet.create({
   potText: { color: colors.gold, fontSize: fontSize.lg, fontWeight: '900', ...numericFont },
   boardCards: { flexDirection: 'row', gap: 6 },
   streetText: {
-    color: 'rgba(255,244,231,0.6)',
+    color: 'rgba(242,240,234,0.6)',
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 2,
   },
+  // Four-step progression: preflop/flop/turn/river read at a glance instead of a
+  // single street name that needs parsing.
+  streetTimeline: { flexDirection: 'row', alignItems: 'center' },
+  streetTimelineItem: { flexDirection: 'row', alignItems: 'center' },
+  streetDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(242,240,234,0.25)',
+  },
+  streetDotDone: { backgroundColor: colors.mint },
+  streetLine: { width: 14, height: 1.5, backgroundColor: 'rgba(242,240,234,0.25)' },
+  streetLineDone: { backgroundColor: colors.mint },
   betAnchor: {
     position: 'absolute',
     width: 52,
