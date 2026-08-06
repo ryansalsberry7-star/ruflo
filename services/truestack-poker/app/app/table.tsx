@@ -35,6 +35,14 @@ interface PlayerTrustSummary {
   trustScore: number;
 }
 
+/** VPIP/PFR opponent-read from the server -- null (from the API) until there's a
+ *  meaningful sample this session, which /api/hud-stats/:id represents by omitting it. */
+interface PlayerHudStats {
+  hands: number;
+  vpip: number;
+  pfr: number;
+}
+
 const TABLE_ID = 'cash-aurora';
 const MAX_SEATS = 9;
 /** Mirrors the gateway's turnActionMs default; drives the action-bar timer bar. */
@@ -180,6 +188,9 @@ interface SeatPodProps {
   /** Seconds left in this seat's turn, or null when it isn't this seat's turn. Drives
    *  the timer ring around the avatar. */
   turnCountdown?: number | null;
+  /** Opponent VPIP/PFR read. Null for the hero (nothing to read about yourself
+   *  mid-hand) and for anyone without a meaningful sample yet this session. */
+  hudStats?: PlayerHudStats | null;
 }
 
 function SeatPod({
@@ -198,6 +209,7 @@ function SeatPod({
   winOdds,
   isWinner,
   turnCountdown,
+  hudStats,
 }: SeatPodProps): JSX.Element {
   // A fold should read as a decision, not a glitch -- cards slide away instead of
   // vanishing the instant `folded` flips true. HoleCards keeps rendering (still
@@ -243,6 +255,10 @@ function SeatPod({
   // "Active" is the default/uninteresting state for most seats most of the time, so it's
   // omitted entirely rather than costing every seat a line of height for no information.
   const status = player.folded ? 'Folded' : player.allIn ? 'All-in' : isTurn ? 'Acting\u2026' : null;
+  // VPIP/PFR shares the status line rather than adding a row of its own -- this pod has
+  // fought height-crowding bugs before. A live status always wins when there is one;
+  // the read is only worth showing in the dead space where nothing else is happening.
+  const hudLabel = hudStats ? `${hudStats.vpip}/${hudStats.pfr}` : null;
   const character = getPlayerCharacter(resolveCharacterId(characterId, player.name));
   return (
     <View style={[seatStyles.pod, { width: podWidth }]}>
@@ -332,7 +348,11 @@ function SeatPod({
           <View style={seatStyles.stackChipDot} />
           <Text style={seatStyles.stackAmount}>{formatChips(player.stack)}</Text>
         </View>
-        {status ? <Text style={[seatStyles.status, isTurn && seatStyles.statusActive]}>{status}</Text> : null}
+        {status ? (
+          <Text style={[seatStyles.status, isTurn && seatStyles.statusActive]}>{status}</Text>
+        ) : hudLabel ? (
+          <Text style={[seatStyles.hudLabel, numericFont]}>{hudLabel}</Text>
+        ) : null}
       </View>
     </View>
   );
@@ -362,6 +382,7 @@ export default function TableScreen() {
   });
   const [playerProfiles, setPlayerProfiles] = useState<Record<string, PlayerIdentityProfile>>({});
   const [playerTrust, setPlayerTrust] = useState<Record<string, PlayerTrustSummary>>({});
+  const [playerHudStats, setPlayerHudStats] = useState<Record<string, PlayerHudStats>>({});
   const reconnectTokenRef = useRef<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const manualCloseRef = useRef(false);
@@ -504,11 +525,12 @@ export default function TableScreen() {
       try {
         const entries = await Promise.all(
           playerIds.map(async (playerId) => {
-            const [profileResponse, trustResponse] = await Promise.all([
+            const [profileResponse, trustResponse, hudResponse] = await Promise.all([
               getJson<{ profile: PlayerIdentityProfile }>(`/api/profiles/${playerId}`),
               getJson<{ trust: PlayerTrustSummary }>(`/api/trust/${playerId}`),
+              getJson<{ stats: PlayerHudStats | null }>(`/api/hud-stats/${playerId}`),
             ]);
-            return [playerId, profileResponse.profile, trustResponse.trust] as const;
+            return [playerId, profileResponse.profile, trustResponse.trust, hudResponse.stats] as const;
           })
         );
 
@@ -516,14 +538,17 @@ export default function TableScreen() {
 
         const nextProfiles: Record<string, PlayerIdentityProfile> = {};
         const nextTrust: Record<string, PlayerTrustSummary> = {};
+        const nextHudStats: Record<string, PlayerHudStats> = {};
 
-        for (const [playerId, profile, trust] of entries) {
+        for (const [playerId, profile, trust, hudStats] of entries) {
           nextProfiles[playerId] = profile;
           nextTrust[playerId] = trust;
+          if (hudStats) nextHudStats[playerId] = hudStats;
         }
 
         setPlayerProfiles(nextProfiles);
         setPlayerTrust(nextTrust);
+        setPlayerHudStats(nextHudStats);
       } catch {
         if (!active) return;
       }
@@ -934,6 +959,7 @@ export default function TableScreen() {
                   winOdds={isHero ? winOdds : null}
                   isWinner={!!player && player.id === lastWinnerId}
                   turnCountdown={table?.currentTurn === player?.id ? countdown : null}
+                  hudStats={player && !isHero ? playerHudStats[player.id] ?? null : null}
                 />
               </View>
             ))}
@@ -1474,6 +1500,9 @@ const seatStyles = StyleSheet.create({
   name: { color: colors.text, fontSize: fontSize.xs, fontWeight: '800', maxWidth: '100%', textAlign: 'center' },
   status: { color: 'rgba(242,240,234,0.55)', fontSize: fontSize.xxs, fontWeight: '800', marginTop: 0.5 },
   statusActive: { color: colors.mint },
+  // VPIP/PFR opponent read, e.g. "24/12" -- data-viz violet keeps it visually distinct
+  // from the wine/gold identity used for game-state text like status and last action.
+  hudLabel: { color: colors.dataViolet, fontSize: fontSize.xxs, fontWeight: '800', marginTop: 0.5 },
   emptyAvatar: {
     width: 22,
     height: 22,

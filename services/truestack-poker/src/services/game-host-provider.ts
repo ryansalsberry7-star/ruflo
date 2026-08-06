@@ -1,6 +1,7 @@
 import type { ActionType, Card, TableState } from '../poker-engine.js';
 import type { GameVariant, StakeLevel, TournamentListing, ZeroRakePolicy } from '../contracts.js';
 import type { HandVerificationRecord } from './dealer-service.js';
+import type { PlayerHudStats } from './player-stats-service.js';
 import type { FeaturedTable, SettledHand, TableListing, TournamentRegistration } from './poker-service.js';
 
 /**
@@ -40,6 +41,8 @@ export interface GameHostProvider {
   getActiveHandId(tableId: string): string | null;
   /** One player's own hole cards. Send only to the socket authenticated as that player. */
   getHoleCardsFor(tableId: string, playerId: string): Card[];
+  /** VPIP/PFR HUD read for a player, or null until there's a meaningful sample. */
+  getPlayerHudStats(playerId: string): PlayerHudStats | null;
 
   getHandHistory(tableId: string): SettledHand[];
   getHandVerification(handId: string): HandVerificationRecord;

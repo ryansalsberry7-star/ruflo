@@ -671,6 +671,15 @@ async function routeRequest(
     return;
   }
 
+  // VPIP/PFR opponent-read for the table HUD. Null until the player has a big enough
+  // sample this session -- see PlayerStatsService's MIN_SAMPLE_HANDS.
+  if (method === 'GET' && pathname.startsWith('/api/hud-stats/') && pathname.split('/').length === 4) {
+    const userId = pathname.split('/')[3] ?? '';
+    const stats = services.poker.getPlayerHudStats(userId);
+    sendJson(res, 200, { stats });
+    return;
+  }
+
   if (method === 'POST' && pathname.startsWith('/api/trust/') && pathname.endsWith('/verify-human')) {
     if (!hasAdminAccess(req, adminKey)) {
       sendJson(res, 403, { error: 'Admin authorization required.' });

@@ -21,6 +21,7 @@ import { GAME_VARIANT_LABELS, HOLE_CARD_COUNT, STAKE_LEVELS, TOURNAMENT_LISTINGS
 import { DealerService, type DealerHandState, type HandVerificationRecord } from './dealer-service.js';
 import type { GameHostProvider } from './game-host-provider.js';
 import { HighHandService } from './high-hand-service.js';
+import { PlayerStatsService, type PlayerHudStats } from './player-stats-service.js';
 import type { WalletService } from './wallet-service.js';
 
 export interface SettledPayout {
@@ -76,6 +77,7 @@ export class PokerService extends EventEmitter implements GameHostProvider {
   private readonly activeDealerHands = new Map<string, DealerHandState>();
   private readonly verificationRecords = new Map<string, HandVerificationRecord>();
   private readonly tableHandIndex = new Map<string, string[]>();
+  private readonly playerStats = new PlayerStatsService();
 
   constructor(
     private readonly highHands?: HighHandService,
@@ -212,6 +214,9 @@ export class PokerService extends EventEmitter implements GameHostProvider {
 
   applyPlayerAction(tableId: string, playerId: string, type: ActionType, amount = 0): TableState {
     const current = this.getTable(tableId);
+    // Recorded against the street the action was taken on (before this action can
+    // possibly advance it), for the VPIP/PFR HUD stats.
+    this.playerStats.recordAction(tableId, playerId, type, current.currentStreet);
     const action: PlayerAction = { playerId, type, amount };
     let next = applyAction(current, action);
     next = this.withAdvancedTurn(next, playerId);
@@ -546,7 +551,15 @@ export class PokerService extends EventEmitter implements GameHostProvider {
     });
 
     this.activeDealerHands.set(tableId, hand);
+    // Denominator for the VPIP/PFR HUD stats -- every player dealt in counts, including
+    // one who folds preflop without ever taking a tracked action.
+    for (const id of players) this.playerStats.recordHandDealt(tableId, id);
     return hand;
+  }
+
+  /** VPIP/PFR HUD read for a player, or null until there's a meaningful sample. */
+  getPlayerHudStats(playerId: string): PlayerHudStats | null {
+    return this.playerStats.getStats(playerId);
   }
 
   /** Pays settled pots back into the winners' seats. Run before the next hand's blinds are posted. */
