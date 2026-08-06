@@ -237,6 +237,13 @@ export class PokerService extends EventEmitter implements GameHostProvider {
       this.progressHand(tableId);
     }
 
+    // Bots call this method directly, with no websocket message and therefore no
+    // gateway-side broadcast -- a bot's fold, bet, or the street/hand advances that
+    // action triggers via progressHand were previously invisible to every connected
+    // client until the hand fully settled. This event is the seam the gateway hooks to
+    // broadcast on every state change regardless of who (human or bot) caused it.
+    this.emit('table-changed', tableId);
+
     return this.getTable(tableId);
   }
 

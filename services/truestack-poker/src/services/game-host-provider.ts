@@ -51,4 +51,10 @@ export interface GameHostProvider {
 
   on(event: 'hand-settled', listener: (settled: SettledHand) => void): this;
   off(event: 'hand-settled', listener: (settled: SettledHand) => void): this;
+  /** Fires after every applyPlayerAction call, whether the actor was a human (via the
+   *  gateway) or a bot (calling this interface directly) -- the seam a realtime layer
+   *  hooks to keep every connected client in sync with autonomous dealer-brain activity
+   *  (street advances, bot folds) that no single client request caused. */
+  on(event: 'table-changed', listener: (tableId: string) => void): this;
+  off(event: 'table-changed', listener: (tableId: string) => void): this;
 }

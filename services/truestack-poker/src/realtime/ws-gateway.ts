@@ -74,6 +74,18 @@ export function attachRealtimeGateway(options: GatewayOptions) {
   };
   services.poker.on('hand-settled', onHandSettled);
 
+  // Bots call applyPlayerAction directly (no websocket message), so their folds,
+  // bets, and the street advances those actions trigger via the dealer brain need
+  // their own broadcast path -- otherwise a client only ever hears about a hand once
+  // it fully settles, and everything in between (including the flop/turn/river itself)
+  // is invisible. Redundant with onHandSettled's own broadcast on a settling action;
+  // harmless, since both send the same authoritative state.
+  const onTableChanged = (tableId: string) => {
+    broadcastTable(clients, tableId, { event: 'table_update', payload: { table: services.poker.getTable(tableId) } });
+    scheduleTurnTimeout(tableTurnTimers, services, clients, tableId, turnActionMs);
+  };
+  services.poker.on('table-changed', onTableChanged);
+
   wss.on('connection', (socket) => {
     clients.set(socket, { socket, userId: 'guest', tableId: null });
 
@@ -243,6 +255,7 @@ export function attachRealtimeGateway(options: GatewayOptions) {
     close: async () => {
       server.off('upgrade', onUpgrade);
       services.poker.off('hand-settled', onHandSettled);
+      services.poker.off('table-changed', onTableChanged);
       for (const pending of pendingDisconnects.values()) {
         clearTimeout(pending.timeout);
       }
