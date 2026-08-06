@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  preChipOn: { borderColor: colors.gold, backgroundColor: '#3A1E22' },
+  preChipOn: { borderColor: colors.gold, backgroundColor: colors.surfaceActive },
   checkbox: {
     width: 15,
     height: 15,
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   checkboxOn: { backgroundColor: colors.gold, borderColor: colors.gold },
-  checkmark: { color: '#2A1118', fontSize: 10, fontWeight: '900', lineHeight: 12 },
+  checkmark: { color: colors.ink, fontSize: 10, fontWeight: '900', lineHeight: 12 },
   preLabel: { color: colors.textMuted, fontSize: 12, fontWeight: '700' },
   preLabelOn: { color: colors.text },
 
@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
   },
-  sizeChipOn: { borderColor: colors.gold, backgroundColor: '#3A1E22' },
+  sizeChipOn: { borderColor: colors.gold, backgroundColor: colors.surfaceActive },
   sizeLabel: { color: colors.textMuted, fontSize: 12, fontWeight: '700' },
   sizeLabelOn: { color: colors.gold },
 
@@ -307,7 +307,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  sliderFill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: '#3A1E22' },
+  sliderFill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: colors.surfaceActive },
   sliderValue: { color: colors.text, fontSize: 14, fontWeight: '800', textAlign: 'center' },
 
   actionRow: { flexDirection: 'row', gap: 8 },
@@ -323,6 +323,6 @@ const styles = StyleSheet.create({
   raiseAction: { backgroundColor: colors.gold },
   actionText: { color: colors.text, fontSize: 15, fontWeight: '800' },
   actionAmount: { color: colors.text, fontSize: 12, fontWeight: '600', opacity: 0.85 },
-  actionTextDark: { color: '#2A1118', fontSize: 15, fontWeight: '900' },
-  actionAmountDark: { color: '#2A1118', fontSize: 12, fontWeight: '700', opacity: 0.8 },
+  actionTextDark: { color: colors.ink, fontSize: 15, fontWeight: '900' },
+  actionAmountDark: { color: colors.ink, fontSize: 12, fontWeight: '700', opacity: 0.8 },
 });

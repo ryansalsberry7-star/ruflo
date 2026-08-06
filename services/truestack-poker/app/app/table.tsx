@@ -5,17 +5,18 @@ import { Animated, Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDim
 import { ActionBar } from './components/ActionBar';
 import { HoleCards } from './components/HoleCards';
 import { StartingHandMatrix } from './components/StartingHandMatrix';
-import { BetChips, ChipPile, PotChips } from './components/Chips';
+import { BetChips, PotChips } from './components/Chips';
 import { DealerStage } from './components/live-dealer/DealerStage';
 import { useDealerController } from './components/live-dealer/dealerController';
 import { useAuth } from './lib/auth';
 import { getJson, postJson, resolveWebSocketBaseUrl } from './lib/api';
 import { getPlayerCharacter, resolveCharacterId } from './lib/playerIdentity';
 import { useTablePreferences } from './lib/tablePreferences';
-import { colors } from './lib/theme';
+import { colors, fontSize } from './lib/theme';
 import type { DeckColorMode } from './lib/theme';
-import { getLegalActions } from './lib/betting';
-import type { ActionKind, TablePlayer, TableState } from './lib/betting';
+import { formatChips, getLegalActions } from './lib/betting';
+import type { ActionKind, GameVariant, TablePlayer, TableState } from './lib/betting';
+import { estimateWinOdds } from './lib/winOdds';
 
 interface TableEventEnvelope {
   event: string;
@@ -101,19 +102,22 @@ function DealtCard({ id, index }: { id: string; index: number }): JSX.Element {
 }
 
 // Cyan ring that pulses around the seat whose turn it is.
-function PulseRing(): JSX.Element {
+/** Turn indicator by default (gold, slow loop). The winner's seat reuses this at a
+ *  faster pace in green -- same visual language, different meaning. */
+function PulseRing({ color = colors.gold, duration = 1100 }: { color?: string; duration?: number }): JSX.Element {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    const loop = Animated.loop(Animated.timing(anim, { toValue: 1, duration: 1100, useNativeDriver: false }));
+    const loop = Animated.loop(Animated.timing(anim, { toValue: 1, duration, useNativeDriver: false }));
     loop.start();
     return () => loop.stop();
-  }, [anim]);
+  }, [anim, duration]);
   return (
     <Animated.View
       pointerEvents="none"
       style={[
         seatStyles.pulseRing,
         {
+          borderColor: color,
           opacity: anim.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0.75, 0.15, 0] }),
           transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.18] }) }],
         },
@@ -139,6 +143,10 @@ interface SeatPodProps {
   lastAction?: string | null;
   /** Pod width in px. Scaled from the felt so nine seats fit a phone without colliding. */
   podWidth: number;
+  /** Hero's own Monte Carlo win-equity estimate, 0-100. Only ever populated for the hero pod. */
+  winOdds?: number | null;
+  /** True for ~900ms right after this seat takes down a pot -- drives the win-glow pulse. */
+  isWinner?: boolean;
 }
 
 function SeatPod({
@@ -154,7 +162,30 @@ function SeatPod({
   holeCardCount,
   lastAction,
   podWidth,
+  winOdds,
+  isWinner,
 }: SeatPodProps): JSX.Element {
+  // A fold should read as a decision, not a glitch -- cards slide away instead of
+  // vanishing the instant `folded` flips true. HoleCards keeps rendering (still
+  // face-down for opponents, so nothing is exposed) until the animation finishes.
+  const folded = player?.folded ?? false;
+  const cardFade = useRef(new Animated.Value(folded ? 0 : 1)).current;
+  const [cardsMounted, setCardsMounted] = useState(!folded);
+  const wasFoldedRef = useRef(folded);
+
+  useEffect(() => {
+    if (folded === wasFoldedRef.current) return;
+    wasFoldedRef.current = folded;
+    if (folded) {
+      Animated.timing(cardFade, { toValue: 0, duration: 320, useNativeDriver: false }).start(() => setCardsMounted(false));
+    } else {
+      // Fresh hand dealt into this seat -- no fade-in needed, DealtCard/HoleCards
+      // already own the deal entrance for the felt itself.
+      cardFade.setValue(1);
+      setCardsMounted(true);
+    }
+  }, [folded, cardFade]);
+
   if (!player) {
     const label = isHero ? 'Taking seat\u2026' : seated ? 'Open' : 'Sit here';
     const inviting = !seated && !isHero;
@@ -182,8 +213,14 @@ function SeatPod({
   return (
     <View style={[seatStyles.pod, { width: podWidth }]}>
       {isTurn ? <PulseRing /> : null}
-      <View style={seatStyles.cardsRow}>
-        {!player.folded ? (
+      {isWinner ? <PulseRing color={colors.positive} duration={650} /> : null}
+      <Animated.View
+        style={[
+          seatStyles.cardsRow,
+          { opacity: cardFade, transform: [{ translateY: cardFade.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] },
+        ]}
+      >
+        {cardsMounted ? (
           // The hero sees their own hand face-up; every other seat stays face-down.
           <HoleCards
             cards={isHero ? heroHoleCards : []}
@@ -193,7 +230,7 @@ function SeatPod({
             cardCount={holeCardCount}
           />
         ) : null}
-      </View>
+      </Animated.View>
       {lastAction ? (
         <View style={seatStyles.lastActionPill}>
           <Text style={seatStyles.lastActionText}>{lastAction}</Text>
@@ -206,6 +243,16 @@ function SeatPod({
               <Text style={seatStyles.avatarEmoji}>{character.emoji}</Text>
             </View>
           </View>
+          {/* Win odds rides on the avatar ring rather than its own row -- this pod already
+              fought (and re-fought) a height-crowding bug, so a badge that overlaps space
+              the ring already reserves costs nothing, unlike a fourth stacked block would. */}
+          {isHero && typeof winOdds === 'number' ? (
+            <View style={[seatStyles.winOddsBadge, { borderColor: winOdds >= 50 ? colors.positive : colors.fold }]}>
+              <Text style={[seatStyles.winOddsBadgeText, { color: winOdds >= 50 ? colors.positive : colors.fold }]}>
+                {winOdds}%
+              </Text>
+            </View>
+          ) : null}
           {verifiedHuman ? (
             <View style={seatStyles.trustShield}>
               <Text style={seatStyles.trustShieldText}>H</Text>
@@ -228,7 +275,13 @@ function SeatPod({
             <Text style={seatStyles.botTagText}>BOT</Text>
           </View>
         ) : null}
-        <ChipPile amount={player.stack} size={7} columns={1} />
+        {/* A flat, single-hue chip dot rather than the pot's photorealistic multi-denomination
+            pile -- that many-hued art (7 casino colours) was fighting this app's restrained
+            wine/gold identity at every seat, and is illegible at this size anyway. */}
+        <View style={seatStyles.stackRow}>
+          <View style={seatStyles.stackChipDot} />
+          <Text style={seatStyles.stackAmount}>{formatChips(player.stack)}</Text>
+        </View>
         {status ? <Text style={[seatStyles.status, isTurn && seatStyles.statusActive]}>{status}</Text> : null}
       </View>
     </View>
@@ -249,6 +302,14 @@ export default function TableScreen() {
   // Winner of the hand just settled, used to sweep the pot chips toward their seat.
   const [lastWinnerId, setLastWinnerId] = useState<string | null>(null);
   const [potPushKey, setPotPushKey] = useState(0);
+  // Bets that were live the instant the street closed, swept into the pot instead of
+  // just vanishing when the server zeroes streetContribution for the new street.
+  const [streetSweepAmounts, setStreetSweepAmounts] = useState<Record<string, number>>({});
+  const [streetSweepKey, setStreetSweepKey] = useState(0);
+  const prevStreetRef = useRef<{ street: string | null; contributions: Record<string, number> }>({
+    street: null,
+    contributions: {},
+  });
   const [playerProfiles, setPlayerProfiles] = useState<Record<string, PlayerIdentityProfile>>({});
   const [playerTrust, setPlayerTrust] = useState<Record<string, PlayerTrustSummary>>({});
   const reconnectTokenRef = useRef<string | null>(null);
@@ -476,6 +537,17 @@ export default function TableScreen() {
       ? `${(((table?.pot ?? 0) + heroLegal.amountToCall) / heroLegal.amountToCall).toFixed(1)}:1`
       : null;
 
+  const variant: GameVariant = table?.variant === 'plo' ? 'plo' : 'nlh';
+  const heroInHand = !!mySeat && !mySeat.folded;
+  const activeOpponentCount = table
+    ? table.players.filter((player) => player.id !== user?.userId && !player.folded).length
+    : 0;
+  // Keyed on card contents rather than the (freshly-mapped, new-reference-every-render)
+  // arrays themselves, so the Monte Carlo sim below only reruns when the hand actually
+  // changes street or the hero's own cards change -- not on every unrelated table tick.
+  const heroCardsKey = holeCards.join(',');
+  const communityCardsKey = communityCards.join(',');
+
   async function handleSit(index: number): Promise<void> {
     if (mySeat) {
       // Already seated: reposition the hero visually to the tapped open seat.
@@ -507,6 +579,47 @@ export default function TableScreen() {
   // them meant the loading render called fewer hooks than the signed-in render, and React
   // threw "Rendered more hooks than during the previous render" the moment auth resolved.
   const dealerCue = useDealerController(table, connected);
+
+  // Win-odds is a Monte Carlo estimate run against the hero's *own* hole cards -- nobody
+  // else's cards are ever delivered to this client, so there's nothing here another seat
+  // could see even if they inspected this client's state.
+  const winOdds = useMemo(() => {
+    if (!heroInHand) return null;
+    return estimateWinOdds({
+      heroCards: holeCards,
+      communityCards,
+      opponentCount: activeOpponentCount,
+      variant,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heroCardsKey, communityCardsKey, activeOpponentCount, heroInHand, variant]);
+
+  // The server zeroes streetContribution the instant a street closes, which otherwise
+  // makes every player's bet chips just vanish. Snapshot whatever was live the moment
+  // currentStreet actually changes and sweep it into the pot instead -- seat pixel
+  // positions aren't known here (they need windowWidth-derived layout, computed below
+  // the early returns), so this only decides *what* to sweep; the render below decides
+  // *where*.
+  useEffect(() => {
+    const nextStreet = table?.currentStreet ?? null;
+    const prev = prevStreetRef.current;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (prev.street && nextStreet && prev.street !== nextStreet) {
+      const swept = Object.fromEntries(Object.entries(prev.contributions).filter(([, amount]) => amount > 0));
+      if (Object.keys(swept).length > 0) {
+        setStreetSweepAmounts(swept);
+        setStreetSweepKey((key) => key + 1);
+        timer = setTimeout(() => setStreetSweepAmounts({}), 650);
+      }
+    }
+    prevStreetRef.current = {
+      street: nextStreet,
+      contributions: Object.fromEntries((table?.players ?? []).map((player) => [player.id, player.streetContribution])),
+    };
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [table?.currentStreet, table?.players]);
 
   if (authLoading) {
     return (
@@ -687,6 +800,31 @@ export default function TableScreen() {
               ) : null
             )}
 
+            {/* Bets don't just vanish when a street closes -- they sweep into the pot,
+                same physical language as the pot-to-winner push below. */}
+            {Object.entries(streetSweepAmounts).map(([playerId, amount]) => {
+              const assignment = seatAssignments.find((entry) => entry.player?.id === playerId);
+              if (!assignment) return null;
+              const { slot } = assignment;
+              const bx = slot.x + (0.5 - slot.x) * 0.3;
+              const by = slot.y + (0.46 - slot.y) * 0.32;
+              return (
+                <View
+                  key={`sweep-${playerId}-${streetSweepKey}`}
+                  pointerEvents="none"
+                  style={[feltStyles.betAnchor, { left: bx * tableWidth - 26, top: by * tableHeight - 10 }]}
+                >
+                  <PotChips
+                    amount={amount}
+                    pushTo={{ x: (0.5 - bx) * tableWidth, y: (0.46 - by) * tableHeight }}
+                    pushKey={streetSweepKey}
+                    size={13}
+                    columns={2}
+                  />
+                </View>
+              );
+            })}
+
             {seatAssignments.map(({ slot, player, isHero }, index) => (
               <View
                 key={index}
@@ -708,6 +846,8 @@ export default function TableScreen() {
                   lastAction={player ? seatLastAction(player) : null}
                   podWidth={podWidth}
                   onSit={!player ? () => void handleSit(index) : undefined}
+                  winOdds={isHero ? winOdds : null}
+                  isWinner={!!player && player.id === lastWinnerId}
                 />
               </View>
             ))}
@@ -721,26 +861,26 @@ export default function TableScreen() {
             <Text style={styles.consoleTitle}>Sound & Atmosphere</Text>
             <View style={styles.audioRow}>
               <Text style={styles.audioLabel}>3D dealer</Text>
-              <Switch value={preferences.liveDealerEnabled} onValueChange={(value) => setPreferences({ liveDealerEnabled: value })} trackColor={{ false: '#7B746A', true: '#E1B847' }} />
+              <Switch value={preferences.liveDealerEnabled} onValueChange={(value) => setPreferences({ liveDealerEnabled: value })} trackColor={{ false: colors.textFaint, true: colors.gold }} />
             </View>
             <View style={styles.audioRow}>
               <Text style={styles.audioLabel}>Dealer & table sounds</Text>
-              <Switch value={preferences.soundEffectsEnabled} onValueChange={(value) => setPreferences({ soundEffectsEnabled: value })} trackColor={{ false: '#7B746A', true: '#E1B847' }} />
+              <Switch value={preferences.soundEffectsEnabled} onValueChange={(value) => setPreferences({ soundEffectsEnabled: value })} trackColor={{ false: colors.textFaint, true: colors.gold }} />
             </View>
             <View style={styles.audioRow}>
               <Text style={styles.audioLabel}>Ambient effects</Text>
-              <Switch value={preferences.ambientEffectsEnabled} onValueChange={(value) => setPreferences({ ambientEffectsEnabled: value })} trackColor={{ false: '#7B746A', true: '#E1B847' }} />
+              <Switch value={preferences.ambientEffectsEnabled} onValueChange={(value) => setPreferences({ ambientEffectsEnabled: value })} trackColor={{ false: colors.textFaint, true: colors.gold }} />
             </View>
             <View style={styles.audioRow}>
               <Text style={styles.audioLabel}>Haptic feedback</Text>
-              <Switch value={preferences.hapticFeedbackEnabled} onValueChange={(value) => setPreferences({ hapticFeedbackEnabled: value })} trackColor={{ false: '#7B746A', true: '#E1B847' }} />
+              <Switch value={preferences.hapticFeedbackEnabled} onValueChange={(value) => setPreferences({ hapticFeedbackEnabled: value })} trackColor={{ false: colors.textFaint, true: colors.gold }} />
             </View>
             <View style={styles.audioRow}>
               <Text style={styles.audioLabel}>Four-colour deck</Text>
               <Switch
                 value={deckMode === 'fourColor'}
                 onValueChange={(value) => setDeckMode(value ? 'fourColor' : 'twoColor')}
-                trackColor={{ false: '#7B746A', true: '#E1B847' }}
+                trackColor={{ false: colors.textFaint, true: colors.gold }}
               />
             </View>
           </View>
@@ -771,20 +911,7 @@ export default function TableScreen() {
         </View>
       </View>
 
-      <View style={styles.footerLinks}>
-        <Link href="/hand-verification" asChild>
-          <Pressable style={styles.linkButton}>
-            <Text style={styles.linkButtonText}>High Hand Highlights</Text>
-          </Pressable>
-        </Link>
-        <Link href="/hand-history" asChild>
-          <Pressable style={styles.linkButton}>
-            <Text style={styles.linkButtonText}>Replay Center</Text>
-          </Pressable>
-        </Link>
-      </View>
-
-      <StartingHandMatrix variant={table?.variant ?? 'nlh'} />
+      <StartingHandMatrix variant={table?.variant ?? 'nlh'} defaultExpanded />
       </ScrollView>
 
       {/* Pinned outside the ScrollView: a 20s turn timer leaves no room to scroll for Fold. */}
@@ -801,66 +928,26 @@ export default function TableScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#17090D' },
-  centered: { flex: 1, backgroundColor: '#17090D', justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
-  message: { color: '#F3DCD2', fontSize: 15, textAlign: 'center', lineHeight: 22 },
-  screen: { flex: 1, backgroundColor: '#17090D' },
+  root: { flex: 1, backgroundColor: colors.bg },
+  centered: { flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
+  message: { color: '#F3DCD2', fontSize: fontSize.xl, textAlign: 'center', lineHeight: 22 },
+  screen: { flex: 1, backgroundColor: colors.bg },
   content: { paddingHorizontal: 10, paddingTop: 32, paddingBottom: 16, gap: 14 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 8 },
   headerMain: { flex: 1, gap: 2 },
-  headerStakes: { color: '#B99D93', fontSize: 12, fontWeight: '600' },
+  headerStakes: { color: colors.textMuted, fontSize: fontSize.base, fontWeight: '600' },
   gearButton: {
     width: 38,
     height: 38,
     borderRadius: 19,
     borderWidth: 1,
-    borderColor: '#4B2630',
-    backgroundColor: '#221017',
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  gearText: { color: '#F1C46E', fontSize: 17 },
-  eyebrow: { color: '#F1C46E', fontSize: 11, fontWeight: '800', letterSpacing: 1.6 },
-  title: { color: '#FFF4E7', fontSize: 24, fontWeight: '900' },
-  subtitle: { color: '#D2BCB4', fontSize: 13, lineHeight: 19 },
-  heroBanner: {
-    marginHorizontal: 8,
-    borderWidth: 1,
-    borderColor: '#5E3032',
-    backgroundColor: '#2A1118',
-    borderRadius: 24,
-    padding: 14,
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'center',
-  },
-  heroBannerAvatar: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroBannerEmoji: { fontSize: 30 },
-  heroShield: {
-    position: 'absolute',
-    right: -2,
-    bottom: -2,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#3A2414',
-    borderWidth: 1,
-    borderColor: '#E7C57D',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroShieldText: { color: '#F9E8BD', fontSize: 11, fontWeight: '900' },
-  heroBannerCopy: { flex: 1, gap: 2 },
-  heroBannerTitle: { color: '#FFF4E7', fontSize: 18, fontWeight: '900' },
-  heroBannerMeta: { color: '#F7D9A2', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
-  heroBannerNote: { color: '#D2BCB4', fontSize: 12, lineHeight: 17 },
+  gearText: { color: colors.gold, fontSize: 17 },
+  title: { color: colors.text, fontSize: fontSize.display, fontWeight: '900' },
   consoleShelf: {
     marginHorizontal: 8,
     borderWidth: 1,
@@ -872,27 +959,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 5 },
-  },
-  consoleBezel: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#C8C9CA',
-    borderBottomWidth: 1,
-    borderBottomColor: '#8B857B',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  consoleBezelText: {
-    color: '#37322D',
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 1.1,
-  },
-  consoleBezelMeta: {
-    color: '#6F665D',
-    fontSize: 11,
-    fontWeight: '700',
   },
   roomStage: {
     marginHorizontal: 8,
@@ -913,17 +979,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'rgba(241,196,110,0.05)',
   },
-  statusCard: {
-    backgroundColor: '#0F1730',
-    borderColor: '#253454',
-    borderWidth: 1,
-    borderRadius: 18,
-    padding: 12,
-    gap: 6,
-  },
-  statusText: { color: '#D9E5FF', fontSize: 13 },
-  errorText: { color: '#FFB4B4', fontSize: 12, lineHeight: 18, textAlign: 'center' },
-  timerText: { color: '#7ED3FF', fontSize: 14, fontWeight: '700' },
+  errorText: { color: colors.danger, fontSize: fontSize.base, lineHeight: 18, textAlign: 'center' },
   tableStrip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -941,37 +997,9 @@ const styles = StyleSheet.create({
   windowDotRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.textFaint },
   liveDotOn: { backgroundColor: '#4ADE80', shadowColor: '#4ADE80', shadowOpacity: 0.9, shadowRadius: 6 },
-  stripText: { color: colors.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 0.8 },
-  stripDivider: { color: colors.textFaint, fontSize: 12 },
-  stripTimer: { color: colors.gold, fontSize: 12, fontWeight: '900' },
-  tableCard: {
-    backgroundColor: '#0A1226',
-    borderRadius: 24,
-    borderColor: '#21304E',
-    borderWidth: 1,
-    padding: 16,
-    gap: 8,
-  },
-  playersCard: {
-    backgroundColor: '#0E1730',
-    borderWidth: 1,
-    borderColor: '#243454',
-    borderRadius: 14,
-    padding: 12,
-    gap: 8,
-  },
-  cardTitle: { color: '#F5F8FF', fontSize: 16, fontWeight: '700' },
-  metric: { color: '#AFC4EA', fontSize: 13, lineHeight: 19 },
-  seatRow: {
-    borderWidth: 1,
-    borderColor: '#243454',
-    backgroundColor: '#111B34',
-    borderRadius: 12,
-    padding: 10,
-    gap: 2,
-  },
-  seatName: { color: '#E7EEFF', fontSize: 14, fontWeight: '700' },
-  seatMeta: { color: '#96B2E2', fontSize: 12 },
+  stripText: { color: colors.textMuted, fontSize: fontSize.md, fontWeight: '800', letterSpacing: 0.8 },
+  stripDivider: { color: colors.textFaint, fontSize: fontSize.base },
+  stripTimer: { color: colors.gold, fontSize: fontSize.base, fontWeight: '900' },
   audioPanel: {
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
@@ -981,7 +1009,7 @@ const styles = StyleSheet.create({
   },
   consoleTitle: {
     color: colors.gold,
-    fontSize: 12,
+    fontSize: fontSize.base,
     fontWeight: '900',
     letterSpacing: 1,
     textTransform: 'uppercase',
@@ -995,38 +1023,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
-  audioLabel: { color: colors.text, fontSize: 14, fontWeight: '800' },
-  controlsPanel: {
-    backgroundColor: '#D8A12B',
-    padding: 12,
-    gap: 10,
-  },
-  raiseLabel: { color: '#2E160A', fontSize: 16, fontWeight: '900' },
-  sitHint: { color: '#5B2B08', fontSize: 14, fontWeight: '900', textAlign: 'center' },
-  disabledButton: { opacity: 0.4 },
-  quickRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  quickButton: {
-    borderColor: '#956C14',
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    backgroundColor: '#F3D17A',
-  },
-  quickText: { color: '#3B210B', fontSize: 12, fontWeight: '900' },
-  actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  actionButton: {
-    flexBasis: '31%',
-    borderRadius: 6,
-    backgroundColor: '#F7DE95',
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#956C14',
-  },
-  foldButton: { backgroundColor: '#8A6020', borderColor: '#6A4510' },
-  raiseButton: { backgroundColor: '#F2C556', borderColor: '#A36E16' },
-  actionButtonText: { color: '#2E160A', fontWeight: '900', fontSize: 13 },
+  audioLabel: { color: colors.text, fontSize: fontSize.xl, fontWeight: '800' },
   statsPanel: {
     marginHorizontal: 8,
     borderWidth: 1,
@@ -1052,35 +1049,24 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     color: colors.textMuted,
-    fontSize: 9,
+    fontSize: fontSize.sm,
     fontWeight: '900',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
   statValue: {
     color: colors.text,
-    fontSize: 16,
+    fontSize: fontSize.xxl,
     fontWeight: '900',
   },
-  footerLinks: { flexDirection: 'row', gap: 10, marginHorizontal: 8 },
-  linkButton: {
-    flex: 1,
-    borderRadius: 6,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    paddingVertical: 13,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  linkButtonText: { color: colors.text, fontWeight: '900' },
   primaryButton: {
-    backgroundColor: '#F1C46E',
+    backgroundColor: colors.gold,
     borderRadius: 16,
     alignItems: 'center',
     paddingVertical: 16,
     paddingHorizontal: 24,
   },
-  primaryText: { color: '#2A1118', fontSize: 16, fontWeight: '900' },
+  primaryText: { color: colors.ink, fontSize: fontSize.xxl, fontWeight: '900' },
   feltWrap: { alignItems: 'center', paddingBottom: 14 },
 });
 
@@ -1133,8 +1119,7 @@ const feltStyles = StyleSheet.create({
   },
   brandMark: { position: 'absolute', alignItems: 'center', gap: 3 },
   brandText: { color: 'rgba(255,255,255,0.055)', fontSize: 56, fontWeight: '900', letterSpacing: 6 },
-  brandSub: { color: 'rgba(255,255,255,0.06)', fontSize: 11, fontWeight: '900', letterSpacing: 2 },
-  dealer: { position: 'absolute', width: 68, alignItems: 'center', gap: 3 },
+  brandSub: { color: 'rgba(255,255,255,0.06)', fontSize: fontSize.md, fontWeight: '900', letterSpacing: 2 },
   dealerStageAnchor: { position: 'absolute', overflow: 'hidden' },
   board: { position: 'absolute', alignItems: 'center', gap: 8 },
   potRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -1146,7 +1131,7 @@ const feltStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(240,210,120,0.5)',
   },
-  potText: { color: '#FBE7A8', fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
+  potText: { color: '#FBE7A8', fontSize: fontSize.lg, fontWeight: '800', letterSpacing: 0.5 },
   boardCards: { flexDirection: 'row', gap: 6 },
   streetText: {
     color: 'rgba(255,244,231,0.6)',
@@ -1160,7 +1145,6 @@ const feltStyles = StyleSheet.create({
     alignItems: 'center',
   },
   seatAnchor: { position: 'absolute', width: 58, alignItems: 'center' },
-  tableCaption: { color: '#8FA6CC', fontSize: 12, textAlign: 'center', marginTop: 30 },
 });
 
 const cardStyles = StyleSheet.create({
@@ -1197,17 +1181,48 @@ const seatStyles = StyleSheet.create({
     paddingVertical: 0.5,
     marginTop: 1,
   },
-  botTagText: { color: '#B9B2E8', fontSize: 7, fontWeight: '900', letterSpacing: 0.6 },
+  botTagText: { color: '#B9B2E8', fontSize: fontSize.xxs, fontWeight: '900', letterSpacing: 0.6 },
   lastActionPill: {
-    backgroundColor: '#3A1E22',
-    borderColor: '#8A6A45',
+    backgroundColor: colors.surfaceActive,
+    borderColor: colors.goldMuted,
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 5,
     paddingVertical: 1,
     marginTop: 1,
   },
-  lastActionText: { color: '#F1C46E', fontSize: 8, fontWeight: '800', letterSpacing: 0.3 },
+  lastActionText: { color: colors.gold, fontSize: fontSize.xs, fontWeight: '800', letterSpacing: 0.3 },
+  // Only ever rendered on the hero's own pod (see winOdds prop) -- no other seat's client
+  // has the hole cards needed to compute this, so there's nothing to leak either way.
+  // Overlaps the avatar ring's own reserved space rather than adding a stacked row, the
+  // same way trustShield/dealerButton already do on the opposite corner.
+  winOddsBadge: {
+    position: 'absolute',
+    left: -6,
+    top: -4,
+    minWidth: 20,
+    height: 12,
+    borderRadius: 6,
+    paddingHorizontal: 2,
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 3,
+  },
+  winOddsBadgeText: { fontSize: fontSize.micro, fontWeight: '900' },
+  // Single-hue chip dot, not the pot's photorealistic multi-denomination pile -- that
+  // many-coloured art was fighting the app's restrained wine/gold identity at every seat.
+  stackRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 1 },
+  stackChipDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1.5,
+    borderColor: colors.gold,
+  },
+  stackAmount: { color: colors.text, fontSize: fontSize.sm, fontWeight: '800' },
   pod: {
     width: 58,
     alignItems: 'center',
@@ -1289,7 +1304,7 @@ const seatStyles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  avatarEmoji: { fontSize: 7, lineHeight: 8 },
+  avatarEmoji: { fontSize: fontSize.xxs, lineHeight: 8 },
   trustShield: {
     position: 'absolute',
     right: -2,
@@ -1303,7 +1318,7 @@ const seatStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  trustShieldText: { color: '#F9E8BD', fontSize: 6, fontWeight: '900' },
+  trustShieldText: { color: '#F9E8BD', fontSize: fontSize.micro, fontWeight: '900' },
   dealerButton: {
     position: 'absolute',
     right: -4,
@@ -1315,10 +1330,10 @@ const seatStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#2A1118',
+    borderColor: colors.ink,
   },
-  dealerButtonText: { color: '#2A1118', fontSize: 7, fontWeight: '900' },
-  pulseRing: { position: 'absolute', top: 8, left: 1, right: 1, bottom: 16, borderRadius: 36, borderWidth: 2, borderColor: '#F1C46E' },
+  dealerButtonText: { color: colors.ink, fontSize: fontSize.xxs, fontWeight: '900' },
+  pulseRing: { position: 'absolute', top: 8, left: 1, right: 1, bottom: 16, borderRadius: 36, borderWidth: 2, borderColor: colors.gold },
   nameTag: {
     borderRadius: 6,
     paddingHorizontal: 4,
@@ -1328,8 +1343,8 @@ const seatStyles = StyleSheet.create({
     marginTop: 1,
     maxWidth: '100%',
   },
-  name: { color: '#FFF4E7', fontSize: 8, fontWeight: '800', maxWidth: '100%', textAlign: 'center' },
-  status: { color: 'rgba(255,244,231,0.55)', fontSize: 7, fontWeight: '800', marginTop: 0.5 },
+  name: { color: colors.text, fontSize: fontSize.xs, fontWeight: '800', maxWidth: '100%', textAlign: 'center' },
+  status: { color: 'rgba(255,244,231,0.55)', fontSize: fontSize.xxs, fontWeight: '800', marginTop: 0.5 },
   statusActive: { color: colors.gold },
   emptyAvatar: {
     width: 22,
@@ -1341,8 +1356,8 @@ const seatStyles = StyleSheet.create({
     borderColor: colors.goldDim,
     borderStyle: 'dashed',
   },
-  emptyPlus: { color: colors.goldDim, fontSize: 13, fontWeight: '900' },
-  emptyLabel: { color: colors.textFaint, fontSize: 7, fontWeight: '800', textAlign: 'center' },
+  emptyPlus: { color: colors.goldDim, fontSize: fontSize.lg, fontWeight: '900' },
+  emptyLabel: { color: colors.textFaint, fontSize: fontSize.xxs, fontWeight: '800', textAlign: 'center' },
   invitingAvatar: { borderColor: colors.gold, borderStyle: 'solid' },
   invitingPlus: { color: colors.gold },
   invitingLabel: { color: colors.gold, fontWeight: '900' },

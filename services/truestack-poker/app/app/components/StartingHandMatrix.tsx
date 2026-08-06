@@ -22,18 +22,19 @@ import {
 
 interface StartingHandMatrixProps {
   variant: GameVariant;
+  defaultExpanded?: boolean;
 }
 
 const ACTION_CODE: Record<ActionTier, string> = { raise: 'R', mixed: 'M', occasional: '?', fold: '' };
 
 /**
- * Collapsed by default, and the entire grid/category list (data lookups, cell components) only
- * mounts once expanded, so a player who never opens this pays no rendering or computation cost
- * for it. Memoized on `variant` alone -- table.tsx re-renders on every websocket tick, but this
- * component has no reason to follow along.
+ * Collapsed by default (unless `defaultExpanded`), and the entire grid/category list (data
+ * lookups, cell components) only mounts once expanded, so a player who never opens this pays no
+ * rendering or computation cost for it. Memoized on `variant` alone -- table.tsx re-renders on
+ * every websocket tick, but this component has no reason to follow along.
  */
-function StartingHandMatrixImpl({ variant }: StartingHandMatrixProps) {
-  const [expanded, setExpanded] = useState(false);
+function StartingHandMatrixImpl({ variant, defaultExpanded = false }: StartingHandMatrixProps) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [position, setPosition] = useState<NlhPosition>('CO');
   const [showAction, setShowAction] = useState(true);
   const [showFrequency, setShowFrequency] = useState(false);

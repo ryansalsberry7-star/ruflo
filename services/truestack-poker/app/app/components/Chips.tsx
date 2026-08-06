@@ -131,9 +131,17 @@ interface PotChipsProps {
   pushTo?: { x: number; y: number } | null;
   /** Bumped each settlement so a repeat win at the same seat still replays the push. */
   pushKey?: number;
+  /**
+   * Chip diameter and column count -- defaults match the pot itself. A seat's bet
+   * sweeping into the pot at street-end reuses this same component at a smaller size
+   * rather than duplicating the animation.
+   */
+  size?: number;
+  columns?: number;
+  showLabel?: boolean;
 }
 
-export function PotChips({ amount, pushTo, pushKey = 0 }: PotChipsProps) {
+export function PotChips({ amount, pushTo, pushKey = 0, size = 20, columns = 3, showLabel = false }: PotChipsProps) {
   const move = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const fade = useRef(new Animated.Value(1)).current;
 
@@ -159,7 +167,7 @@ export function PotChips({ amount, pushTo, pushKey = 0 }: PotChipsProps) {
       pointerEvents="none"
       style={{ opacity: fade, transform: [{ translateX: move.x }, { translateY: move.y }] }}
     >
-      <ChipPile amount={amount} size={20} columns={3} showLabel={false} />
+      <ChipPile amount={amount} size={size} columns={columns} showLabel={showLabel} />
     </Animated.View>
   );
 }
