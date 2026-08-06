@@ -868,7 +868,7 @@ export default function TableScreen() {
               />
             </View>
 
-            <View style={[feltStyles.board, { top: tableHeight * 0.44, width: tableWidth }]}>
+            <View style={[feltStyles.board, { top: tableHeight * 0.44 }]}>
               <Animated.View style={[feltStyles.potPill, { transform: [{ scale: potPulse }] }]}>
                 <Text style={feltStyles.potLabel}>
                   Pot <Text style={feltStyles.potText}>${table?.pot.toFixed(2) ?? '0.00'}</Text>
@@ -1251,7 +1251,11 @@ const feltStyles = StyleSheet.create({
   brandText: { color: 'rgba(255,255,255,0.055)', fontSize: 56, fontWeight: '900', letterSpacing: 6 },
   brandSub: { color: 'rgba(255,255,255,0.06)', fontSize: fontSize.md, fontWeight: '900', letterSpacing: 2 },
   dealerStageAnchor: { position: 'absolute', overflow: 'hidden' },
-  board: { position: 'absolute', alignItems: 'center', gap: 8 },
+  // left/right (not a fixed width matching the felt's outer dimension) so this spans
+  // exactly the felt's true interior regardless of its border thickness -- a fixed
+  // width equal to the felt's outer size was overshooting past the border on the right,
+  // pulling everything centered inside (pot, chips, board cards) visibly off-center.
+  board: { position: 'absolute', left: 0, right: 0, alignItems: 'center', gap: 8 },
   potPill: {
     backgroundColor: 'rgba(39,25,14,0.72)',
     borderRadius: 7,
