@@ -13,6 +13,7 @@ import { getPlayerCharacter, resolveCharacterId } from './lib/playerIdentity';
 import { useTablePreferences } from './lib/tablePreferences';
 import { colors } from './lib/theme';
 import type { DeckColorMode } from './lib/theme';
+import { getLegalActions } from './lib/betting';
 import type { ActionKind, TablePlayer, TableState } from './lib/betting';
 
 interface TableEventEnvelope {
@@ -296,6 +297,9 @@ export default function TableScreen() {
         // Private to this socket: only ever this player's own hand.
         if (message.event === 'hole_cards') {
           const cards = message.payload?.holeCards;
+          // TEMP: diagnosing a report that hero cards render face-down every time.
+          // Remove once confirmed fixed.
+          console.log('[hole_cards]', cards);
           setHoleCards(Array.isArray(cards) ? (cards as string[]).map((card) => String(card).toUpperCase()) : []);
           return;
         }
@@ -459,17 +463,20 @@ export default function TableScreen() {
 
   const mySeat = table?.players.find((player) => player.id === user?.userId) ?? null;
   const communityCards = table?.communityCards.map((card) => card.id.toUpperCase()) ?? [];
-  const verifiedSeatCount = Object.values(playerTrust).filter((trust) => trust.verifiedHuman).length;
-  const boardSummary =
-    communityCards.length > 0 ? `${communityCards.length} board card${communityCards.length === 1 ? '' : 's'} exposed` : 'Deck set for next hand';
-  const dealerSkinLabel =
-    preferences.dealerSkinId === 'classic-casino-dealer'
-      ? 'Classic Casino'
-      : preferences.dealerSkinId === 'luxury-tournament-dealer'
-        ? 'Tournament'
-        : preferences.dealerSkinId === 'modern-professional-dealer'
-          ? 'Professional'
-          : 'VIP';
+
+  // Live stats worth a player's attention mid-hand — nothing here duplicates what's
+  // already visible on the felt (street, pot, seat count are shown there already).
+  const totalSeated = table?.players.length ?? 0;
+  const playersInHand = table?.players.filter((player) => !player.folded).length ?? 0;
+  const heroStackBB = mySeat && table?.bigBlind ? mySeat.stack / table.bigBlind : null;
+  // getLegalActions only returns a real amountToCall on the hero's own turn (it zeroes
+  // everything out otherwise) — which is exactly when pot odds are an actionable number,
+  // not just trivia, so this naturally disappears the rest of the time.
+  const heroLegal = getLegalActions(table, user?.userId ?? null);
+  const potOddsLabel =
+    heroLegal.amountToCall > 0
+      ? `${(((table?.pot ?? 0) + heroLegal.amountToCall) / heroLegal.amountToCall).toFixed(1)}:1`
+      : null;
 
   async function handleSit(index: number): Promise<void> {
     if (mySeat) {
@@ -488,6 +495,9 @@ export default function TableScreen() {
       if (response?.table) setTable(response.table);
       // Seats are taken over HTTP, so the hand arrives in this response rather than
       // over the socket; without it the player sits blind until the next deal.
+      // TEMP: diagnosing a report that hero cards render face-down every time. Remove
+      // once confirmed fixed.
+      console.log('[join response holeCards]', response?.holeCards);
       if (Array.isArray(response?.holeCards)) {
         setHoleCards(response.holeCards.map((card) => String(card).toUpperCase()));
       }
@@ -742,35 +752,27 @@ export default function TableScreen() {
         </View>
       ) : null}
 
-      <View style={styles.railConsole}>
-        <View style={styles.railTabs}>
-          <Text style={[styles.railTab, styles.railTabActive]}>Session</Text>
-          <Text style={styles.railTab}>Trust</Text>
-          <Text style={styles.railTab}>Dealer Booth</Text>
-        </View>
-        <View style={styles.railGrid}>
-          <View style={styles.railCard}>
-            <Text style={styles.railCardLabel}>Hand log</Text>
-            <Text style={styles.railCardValue}>{boardSummary}</Text>
-            <Text style={styles.railCardMeta}>Street {(table?.currentStreet ?? 'waiting').toUpperCase()} • Pot ${table?.pot.toFixed(2) ?? '0.00'}</Text>
+      {/* Only numbers a player would actually use mid-hand — everything here used to
+          duplicate what's already on the felt (street, pot, seat count) or was static
+          filler (fake tabs that didn't do anything, dealer-quality settings trivia). */}
+      <View style={styles.statsPanel}>
+        <View style={styles.statsRow}>
+          <View style={styles.statTile}>
+            <Text style={styles.statLabel}>In hand</Text>
+            <Text style={styles.statValue}>{playersInHand}/{totalSeated}</Text>
           </View>
-          <View style={styles.railCard}>
-            <Text style={styles.railCardLabel}>Roster check</Text>
-            <Text style={styles.railCardValue}>{verifiedSeatCount} verified human seat{verifiedSeatCount === 1 ? '' : 's'}</Text>
-            <Text style={styles.railCardMeta}>{table?.players.length ?? 0} players tracked • {connected ? 'live connection stable' : 'reconnecting session'}</Text>
-          </View>
-          <View style={styles.railCard}>
-            <Text style={styles.railCardLabel}>Dealer booth</Text>
-            <Text style={styles.railCardValue}>{preferences.liveDealerEnabled ? `${dealerSkinLabel} dealer active` : 'Virtual dealer active'}</Text>
-            <Text style={styles.railCardMeta}>{preferences.liveDealerQuality === 'auto' ? 'Auto quality' : `${preferences.liveDealerQuality} quality`} • dealer stays behind the board</Text>
-          </View>
-        </View>
-        <View style={styles.ledgerStrip}>
-          <Text style={styles.ledgerText}>TABLE {TABLE_ID.toUpperCase()}</Text>
-          <Text style={styles.ledgerDivider}>{'\u2022'}</Text>
-          <Text style={styles.ledgerText}>HERO {effectiveHeroSlot !== null ? `SEAT ${effectiveHeroSlot + 1}` : 'RAIL'}</Text>
-          <Text style={styles.ledgerDivider}>{'\u2022'}</Text>
-          <Text style={styles.ledgerText}>{preferences.soundEffectsEnabled ? 'SFX ON' : 'SFX OFF'}</Text>
+          {heroStackBB !== null ? (
+            <View style={styles.statTile}>
+              <Text style={styles.statLabel}>Your stack</Text>
+              <Text style={styles.statValue}>{heroStackBB.toFixed(1)} BB</Text>
+            </View>
+          ) : null}
+          {potOddsLabel ? (
+            <View style={[styles.statTile, styles.statTileHighlight]}>
+              <Text style={styles.statLabel}>Pot odds</Text>
+              <Text style={styles.statValue}>{potOddsLabel}</Text>
+            </View>
+          ) : null}
         </View>
       </View>
 
@@ -1028,85 +1030,40 @@ const styles = StyleSheet.create({
   foldButton: { backgroundColor: '#8A6020', borderColor: '#6A4510' },
   raiseButton: { backgroundColor: '#F2C556', borderColor: '#A36E16' },
   actionButtonText: { color: '#2E160A', fontWeight: '900', fontSize: 13 },
-  railConsole: {
+  statsPanel: {
     marginHorizontal: 8,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 10,
     backgroundColor: colors.surface,
-    overflow: 'hidden',
+    padding: 8,
   },
-  railTabs: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 10,
-    paddingTop: 10,
-    backgroundColor: colors.surface,
-  },
-  railTab: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-    backgroundColor: colors.surface,
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  railTabActive: {
-    backgroundColor: colors.surfaceRaised,
-    color: colors.gold,
-  },
-  railGrid: {
-    gap: 8,
-    padding: 10,
-    backgroundColor: colors.surfaceRaised,
-  },
-  railCard: {
+  statsRow: { flexDirection: 'row', gap: 8 },
+  statTile: {
+    flex: 1,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 10,
-    backgroundColor: colors.surface,
-    padding: 10,
-    gap: 4,
-  },
-  railCardLabel: {
-    color: colors.gold,
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  railCardValue: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: '900',
-  },
-  railCardMeta: {
-    color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  ledgerStrip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: colors.bg,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderRadius: 8,
+    backgroundColor: colors.surfaceRaised,
     paddingVertical: 8,
-    paddingHorizontal: 10,
+    alignItems: 'center',
+    gap: 2,
   },
-  ledgerText: {
+  statTileHighlight: {
+    borderColor: colors.gold,
+    backgroundColor: 'rgba(241,196,110,0.12)',
+  },
+  statLabel: {
     color: colors.textMuted,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '900',
     letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
-  ledgerDivider: {
-    color: colors.textFaint,
-    fontSize: 11,
+  statValue: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '900',
   },
   footerLinks: { flexDirection: 'row', gap: 10, marginHorizontal: 8 },
   linkButton: {
