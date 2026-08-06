@@ -53,7 +53,7 @@ export default function HomeScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.hero}>
         <Text style={styles.eyebrow}>ZERO-RAKE POKER</Text>
-        <Text style={styles.title}>TRUE STACK</Text>
+        <Text style={styles.title}>EIRINN POKER</Text>
         <Text style={styles.subtitle}>No house edge. No cut of the pot. NLH & PLO.</Text>
       </View>
 

@@ -785,7 +785,7 @@ export default function TableScreen() {
       <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.headerRow}>
         <View style={styles.headerMain}>
-          <Text style={styles.title}>Aurora Table</Text>
+          <Text style={styles.title}>Eirinn Poker Tables</Text>
           <Text style={styles.headerStakes}>
             {table?.variant === 'plo' ? 'PLO' : 'NLH'} • $0.05/$0.10 • Play-money beta
           </Text>
@@ -843,7 +843,7 @@ export default function TableScreen() {
               style={[feltStyles.feltInner, { borderRadius: tableHeight / 2 }]}
             />
             <View pointerEvents="none" style={[feltStyles.brandMark, { top: tableHeight * 0.52, width: tableWidth }]}>
-              <Text style={feltStyles.brandText}>T S</Text>
+              <Text style={feltStyles.brandText}>E P</Text>
               <Text style={feltStyles.brandSub}>PRIVATE TABLE ROOM</Text>
             </View>
 

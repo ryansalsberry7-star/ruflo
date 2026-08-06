@@ -159,10 +159,14 @@ export class BotService {
         'BotService cannot run in production: TRUE STACK advertises no house players. It exists only for local simulation.'
       );
     }
-    // Fast enough that a full hand plays out in seconds, slow enough to watch a decision
-    // land. Tunable via TRUESTACK_DEV_BOT_SPEED_MS for step-through debugging.
+    // Paced to read as a person deciding, not a script firing -- 350ms (the old default)
+    // meant every bot on the table acted within half a second of the turn landing on
+    // them, which blurred folds/calls/raises into an indistinguishable blur of "stuff
+    // happening fast" once the realtime broadcast actually kept up (see the
+    // table-changed fix). Tunable via TRUESTACK_DEV_BOT_SPEED_MS for step-through
+    // debugging, where fast and mechanical is exactly what you want.
     const configured = Number.parseInt(process.env.TRUESTACK_DEV_BOT_SPEED_MS ?? '', 10);
-    const base = Number.isFinite(configured) ? Math.max(0, configured) : 350;
+    const base = Number.isFinite(configured) ? Math.max(0, configured) : 1500;
     this.thinkTimeMs = options.thinkTimeMs ?? base;
     this.thinkJitterMs = options.thinkJitterMs ?? Math.round(base * 0.8);
   }
