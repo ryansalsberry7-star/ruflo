@@ -297,9 +297,6 @@ export default function TableScreen() {
         // Private to this socket: only ever this player's own hand.
         if (message.event === 'hole_cards') {
           const cards = message.payload?.holeCards;
-          // TEMP: diagnosing a report that hero cards render face-down every time.
-          // Remove once confirmed fixed.
-          console.log('[hole_cards]', cards);
           setHoleCards(Array.isArray(cards) ? (cards as string[]).map((card) => String(card).toUpperCase()) : []);
           return;
         }
@@ -495,9 +492,6 @@ export default function TableScreen() {
       if (response?.table) setTable(response.table);
       // Seats are taken over HTTP, so the hand arrives in this response rather than
       // over the socket; without it the player sits blind until the next deal.
-      // TEMP: diagnosing a report that hero cards render face-down every time. Remove
-      // once confirmed fixed.
-      console.log('[join response holeCards]', response?.holeCards);
       if (Array.isArray(response?.holeCards)) {
         setHoleCards(response.holeCards.map((card) => String(card).toUpperCase()));
       }

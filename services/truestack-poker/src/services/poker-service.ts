@@ -245,7 +245,8 @@ export class PokerService extends EventEmitter implements GameHostProvider {
     // than a handful of iterations (fold-out, or preflop -> flop -> turn -> river -> settle).
     for (let iterations = 0; iterations < 10; iterations += 1) {
       const table = this.getTable(tableId);
-      if (!isBettingRoundClosed(table)) return;
+      const dealtIds = this.activeDealerHands.get(tableId)?.holeCardsByPlayer;
+      if (!isBettingRoundClosed(table, dealtIds ? new Set(Object.keys(dealtIds)) : null)) return;
 
       const stillContesting = table.players.filter((entry) => !entry.folded);
       if (stillContesting.length <= 1) {
@@ -308,17 +309,21 @@ export class PokerService extends EventEmitter implements GameHostProvider {
     const current = this.getTable(tableId);
     let next: TableState = current;
 
+    const hand = this.activeDealerHands.get(tableId);
+    // Excludes anyone who joined mid-hand from being handed the first action on the new
+    // street -- they hold no cards in this hand. Same guard as isBettingRoundClosed.
+    const dealtIds = hand ? new Set(Object.keys(hand.holeCardsByPlayer)) : null;
+
     if (current.currentStreet === 'preflop') {
-      next = dealFlop(current);
+      next = dealFlop(current, dealtIds);
     } else if (current.currentStreet === 'flop') {
-      next = dealTurn(current);
+      next = dealTurn(current, dealtIds);
     } else if (current.currentStreet === 'turn') {
-      next = dealRiver(current);
+      next = dealRiver(current, dealtIds);
     } else if (current.currentStreet === 'river') {
       next = { ...current, currentStreet: 'showdown' };
     }
 
-    const hand = this.activeDealerHands.get(tableId);
     if (hand) {
       if (next.currentStreet === 'flop') {
         const withFlop = this.dealer.dealFlop(hand);
@@ -486,7 +491,14 @@ export class PokerService extends EventEmitter implements GameHostProvider {
   }
 
   private withAdvancedTurn(table: TableState, actorId: string): TableState {
-    const activePlayers = table.players.filter((entry) => !entry.folded && !entry.allIn && entry.stack > 0);
+    // A player who joins mid-hand is added to table.players immediately (so they can be
+    // seen and dealt into the *next* hand), but they hold no cards in the hand already in
+    // progress. Without this filter, turn rotation would still cycle around to them and
+    // prompt them to act on a hand they were never dealt into.
+    const dealtIds = this.activeDealerHands.get(table.id)?.holeCardsByPlayer;
+    const isInHand = (entry: TableState['players'][number]) => !dealtIds || entry.id in dealtIds;
+
+    const activePlayers = table.players.filter((entry) => !entry.folded && !entry.allIn && entry.stack > 0 && isInHand(entry));
     if (activePlayers.length <= 1) {
       return { ...table, currentTurn: null };
     }
@@ -496,17 +508,21 @@ export class PokerService extends EventEmitter implements GameHostProvider {
       return table;
     }
 
-    const nextIndex = this.findNextEligiblePlayerIndex(table.players, actorIndex);
+    const nextIndex = this.findNextEligiblePlayerIndex(table.players, actorIndex, isInHand);
     return { ...table, currentTurn: nextIndex >= 0 ? table.players[nextIndex].id : null };
   }
 
-  private findNextEligiblePlayerIndex(players: TableState['players'], fromIndex: number): number {
+  private findNextEligiblePlayerIndex(
+    players: TableState['players'],
+    fromIndex: number,
+    isInHand: (entry: TableState['players'][number]) => boolean = () => true
+  ): number {
     if (players.length === 0) return -1;
 
     for (let offset = 1; offset <= players.length; offset += 1) {
       const idx = (fromIndex + offset) % players.length;
       const candidate = players[idx];
-      if (!candidate.folded && !candidate.allIn && candidate.stack > 0) {
+      if (!candidate.folded && !candidate.allIn && candidate.stack > 0 && isInHand(candidate)) {
         return idx;
       }
     }

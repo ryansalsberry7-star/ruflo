@@ -115,6 +115,57 @@ test('chips are conserved at the table across repeated settled hands', () => {
   }
 });
 
+test('a player who joins mid-hand does not stall the betting round forever', () => {
+  // A player who joins is added to table.players immediately (so the client can render
+  // their seat) but is not dealt into the hand already in progress. isBettingRoundClosed
+  // and turn rotation both used to scan every seated player rather than just the ones
+  // actually dealt in, so a joiner could never satisfy "has acted" and the round -- and
+  // the whole hand -- would silently freeze forever the moment anyone joined mid-hand.
+  const poker = new PokerService(undefined, undefined, { autoProgress: true });
+  poker.createCashTable('table-midjoin', 'micro-1', [
+    { id: 'p1', name: 'Ada', stack: 100 },
+    { id: 'p2', name: 'Linus', stack: 100 },
+  ]);
+
+  // One real action first, so the table no longer looks "fresh" to joinTable's own
+  // freshly-created-table check -- this test is specifically about joining an
+  // already-in-progress hand, not triggering that separate path.
+  const preJoinTurn = poker.getTable('table-midjoin').currentTurn ?? '';
+  poker.applyPlayerAction('table-midjoin', preJoinTurn, 'call', 0);
+
+  poker.joinTable('table-midjoin', { id: 'p3', name: 'Grace', stack: 100 });
+
+  // Drive only the two real hand participants, exactly like production: nothing ever
+  // sends an action on behalf of a player who was never dealt cards for this hand (no
+  // bot drives them, and a real client has no cards to prompt the human with). Before
+  // the fix, turn rotation would hand p3 a turn here -- and even if it hadn't, the
+  // betting round could never close while p3 was still counted as owing an action, so
+  // this would spin for all 60 steps without ever reaching settlement.
+  for (let step = 0; step < 60; step += 1) {
+    // Once the first hand settles, p3 is legitimately part of hand #2 onward (they were
+    // in table.players when it was dealt) -- stop here, which is exactly the point this
+    // test needs to prove: the *hand already in progress* must exclude them, not every
+    // hand from now on.
+    if (poker.getHandHistory('table-midjoin').length >= 1) break;
+    const table = poker.getTable('table-midjoin');
+    const turn = table.currentTurn;
+    if (!turn) break;
+    assert.notEqual(turn, 'p3', 'the newly-joined player must never be given a turn in the hand already in progress when they joined');
+    const actor = table.players.find((p) => p.id === turn);
+    if (!actor) break;
+    const toCall = table.currentBet - actor.streetContribution;
+    poker.applyPlayerAction('table-midjoin', turn, toCall > 0 ? 'call' : 'check', 0);
+  }
+
+  // With 2 players continuously checking/calling, a healthy table settles and redeals
+  // repeatedly within 60 steps -- the fixed bug made it settle exactly zero times.
+  assert.ok(poker.getHandHistory('table-midjoin').length >= 1, 'hand should have settled despite the mid-hand join');
+
+  // The joining player must be dealt into the *next* hand -- that's the whole point of
+  // letting them join early rather than blocking the seat until the hand ends.
+  assert.equal(poker.getHoleCardsFor('table-midjoin', 'p3').length, 2);
+});
+
 test('cashing out returns the remaining stack to the wallet and frees the seat', () => {
   const wallet = new WalletService();
   const poker = new PokerService(undefined, wallet);

@@ -155,12 +155,16 @@ function assignPositions(playerCount: number, buttonIndex: number): { dealerInde
 }
 
 /** First eligible (not folded, not all-in, has chips) player starting from `fromIndex + 1`, wrapping around the table. */
-function findFirstActiveFromIndex(players: PlayerSeat[], fromIndex: number): string | null {
+function findFirstActiveFromIndex(
+  players: PlayerSeat[],
+  fromIndex: number,
+  isEligible: (entry: PlayerSeat) => boolean = () => true
+): string | null {
   if (players.length === 0) return null;
   for (let offset = 1; offset <= players.length; offset += 1) {
     const idx = (fromIndex + offset) % players.length;
     const candidate = players[idx];
-    if (!candidate.folded && !candidate.allIn && candidate.stack > 0) {
+    if (!candidate.folded && !candidate.allIn && candidate.stack > 0 && isEligible(candidate)) {
       return candidate.id;
     }
   }
@@ -248,8 +252,13 @@ export function postBlinds(table: TableState): TableState {
   };
 }
 
-/** Resets per-street betting state (contributions, current bet, min raise) and sets who acts first on the new street. */
-function resetStreetBetting(table: TableState): TableState {
+/**
+ * Resets per-street betting state (contributions, current bet, min raise) and sets who acts
+ * first on the new street. dealtPlayerIds excludes anyone who joined mid-hand and so holds no
+ * cards in it -- without this, a new street could open action on a player who was never dealt
+ * in, the same class of bug isBettingRoundClosed guards against below.
+ */
+function resetStreetBetting(table: TableState, dealtPlayerIds?: ReadonlySet<string> | null): TableState {
   const players = table.players.map((entry) => ({ ...entry, streetContribution: 0 }));
   return {
     ...table,
@@ -257,35 +266,43 @@ function resetStreetBetting(table: TableState): TableState {
     currentBet: 0,
     minRaise: table.bigBlind,
     actedThisRound: [],
-    currentTurn: findFirstActiveFromIndex(players, table.buttonIndex),
+    currentTurn: findFirstActiveFromIndex(players, table.buttonIndex, (entry) => !dealtPlayerIds || dealtPlayerIds.has(entry.id)),
   };
 }
 
-export function dealFlop(table: TableState): TableState {
+export function dealFlop(table: TableState, dealtPlayerIds?: ReadonlySet<string> | null): TableState {
   const deck = [...table.deck];
   const cards = deck.splice(0, 3);
-  return resetStreetBetting({ ...table, deck, communityCards: cards, currentStreet: 'flop' });
+  return resetStreetBetting({ ...table, deck, communityCards: cards, currentStreet: 'flop' }, dealtPlayerIds);
 }
 
-export function dealTurn(table: TableState): TableState {
+export function dealTurn(table: TableState, dealtPlayerIds?: ReadonlySet<string> | null): TableState {
   const deck = [...table.deck];
   const card = deck.splice(0, 1);
-  return resetStreetBetting({ ...table, deck, communityCards: [...table.communityCards, ...card], currentStreet: 'turn' });
+  return resetStreetBetting({ ...table, deck, communityCards: [...table.communityCards, ...card], currentStreet: 'turn' }, dealtPlayerIds);
 }
 
-export function dealRiver(table: TableState): TableState {
+export function dealRiver(table: TableState, dealtPlayerIds?: ReadonlySet<string> | null): TableState {
   const deck = [...table.deck];
   const card = deck.splice(0, 1);
-  return resetStreetBetting({ ...table, deck, communityCards: [...table.communityCards, ...card], currentStreet: 'river' });
+  return resetStreetBetting({ ...table, deck, communityCards: [...table.communityCards, ...card], currentStreet: 'river' }, dealtPlayerIds);
 }
 
 /**
  * True once every player still able to act (not folded, not all-in) has both acted since the
  * last bet/raise and matched the current bet. Also true if fewer than 2 players can still act
  * (an all-in runout or a walk) since no further betting is possible.
+ *
+ * dealtPlayerIds scopes this to players actually holding cards in the hand in progress. A
+ * player who joins the table mid-hand appears in table.players immediately (so they can be
+ * seen and dealt into the *next* hand) but never gets a turn in the current one -- without
+ * this filter they can never satisfy "has acted", so the round could never close and the
+ * hand would stall forever the moment anyone joins mid-hand.
  */
-export function isBettingRoundClosed(table: TableState): boolean {
-  const canStillAct = table.players.filter((entry) => !entry.folded && !entry.allIn && entry.stack > 0);
+export function isBettingRoundClosed(table: TableState, dealtPlayerIds?: ReadonlySet<string> | null): boolean {
+  const canStillAct = table.players.filter(
+    (entry) => !entry.folded && !entry.allIn && entry.stack > 0 && (!dealtPlayerIds || dealtPlayerIds.has(entry.id))
+  );
   if (canStillAct.length < 2) return true;
 
   return canStillAct.every((entry) => table.actedThisRound.includes(entry.id) && entry.streetContribution === table.currentBet);
