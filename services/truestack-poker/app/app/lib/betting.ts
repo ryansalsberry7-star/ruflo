@@ -134,8 +134,8 @@ export function getSizingOptions(table: TableState | null, legal: LegalActions):
 
   const potAfterCall = table.pot + legal.amountToCall;
   const fractions: Array<{ label: string; value: number }> = [
+    { label: '⅓ Pot', value: 1 / 3 },
     { label: '½ Pot', value: 0.5 },
-    { label: '¾ Pot', value: 0.75 },
     { label: 'Pot', value: 1 },
   ];
 

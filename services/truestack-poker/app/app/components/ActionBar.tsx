@@ -91,8 +91,14 @@ export function ActionBar({ table, playerId, seated, countdown, turnActionSecond
 
   if (!isMyTurn) {
     return (
-      <View style={styles.bar}>
-        <Text style={styles.waiting}>Waiting for your turn</Text>
+      <View style={styles.waitBar}>
+        {/* A status strip, not a panel -- the old version gave "waiting" the same
+            padded, boxed treatment as an actual decision, which read as dead space
+            most of a hand. */}
+        <View style={styles.waitStrip}>
+          <View style={styles.waitDot} />
+          <Text style={styles.waiting}>Waiting for your turn</Text>
+        </View>
         <View style={styles.preRow}>
           {(
             [
@@ -106,9 +112,6 @@ export function ActionBar({ table, playerId, seated, countdown, turnActionSecond
               style={[styles.preChip, preAction === option.key && styles.preChipOn]}
               onPress={() => setPreAction(preAction === option.key ? null : option.key)}
             >
-              <View style={[styles.checkbox, preAction === option.key && styles.checkboxOn]}>
-                {preAction === option.key ? <Text style={styles.checkmark}>✓</Text> : null}
-              </View>
               <Text style={[styles.preLabel, preAction === option.key && styles.preLabelOn]}>{option.label}</Text>
             </Pressable>
           ))}
@@ -240,37 +243,40 @@ const styles = StyleSheet.create({
   },
   barActive: { backgroundColor: colors.surfaceRaised },
   hint: { color: colors.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: 12 },
-  waiting: { color: colors.textFaint, fontSize: 12, textAlign: 'center', letterSpacing: 1 },
 
-  preRow: { flexDirection: 'row', gap: 8 },
+  // Thinner than the active bar -- waiting is idle time, not a decision, and shouldn't
+  // claim the same vertical weight as one.
+  waitBar: {
+    backgroundColor: colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 12,
+    gap: 6,
+  },
+  waitStrip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 2 },
+  waitDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: colors.textFaint },
+  waiting: { color: colors.textFaint, fontSize: 12, letterSpacing: 1 },
+
+  preRow: { flexDirection: 'row', gap: 6 },
   preChip: {
     flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: radius.md,
+    paddingVertical: 7,
+    borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.border,
   },
   preChipOn: { borderColor: colors.gold, backgroundColor: colors.surfaceActive },
-  checkbox: {
-    width: 15,
-    height: 15,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: colors.goldDim,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxOn: { backgroundColor: colors.gold, borderColor: colors.gold },
-  checkmark: { color: colors.ink, fontSize: 10, fontWeight: '900', lineHeight: 12 },
   preLabel: { color: colors.textMuted, fontSize: 12, fontWeight: '700' },
   preLabelOn: { color: colors.text },
 
+  // Mint, not gold -- a countdown is a live/action cue, the same accent as the seat
+  // timer ring and live-table dot.
   timerTrack: { height: 3, borderRadius: 2, backgroundColor: colors.borderSubtle, overflow: 'hidden' },
-  timerFill: { height: 3, backgroundColor: colors.gold },
+  timerFill: { height: 3, backgroundColor: colors.mint },
   timerFillUrgent: { backgroundColor: colors.danger },
 
   sizeRow: { flexDirection: 'row', gap: 6 },
@@ -307,7 +313,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  sliderFill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: colors.surfaceActive },
+  // Gold, not the neutral surface tint it used to be -- a bet-size fill is a money
+  // amount, and was nearly invisible against the track before.
+  sliderFill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: 'rgba(203,178,126,0.28)' },
   sliderValue: { color: colors.text, fontSize: 14, fontWeight: '800', textAlign: 'center', ...numericFont },
 
   actionRow: { flexDirection: 'row', gap: 8 },
