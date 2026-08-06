@@ -24,7 +24,7 @@ const DENOMINATIONS: Denomination[] = [
   { value: 5, body: '#B03B3B', edge: '#7A2626', accent: '#F0C0C0' },
   { value: 1, body: '#E8E4DC', edge: '#A9A296', accent: '#7A736A' },
   { value: 0.25, body: '#3A6EA5', edge: '#26496E', accent: '#BBD6EE' },
-  { value: 0.05, body: '#C8A24B', edge: '#8A6A2A', accent: '#F3E2B8' },
+  { value: 0.05, body: '#D9A62E', edge: '#4A2E12', accent: '#E8578F' },
 ];
 
 /**

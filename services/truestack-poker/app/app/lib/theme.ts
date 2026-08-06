@@ -73,13 +73,14 @@ export const fontSize = {
 } as const;
 
 /**
- * Card pip colors. Four-color decks are standard in serious online poker because
+ * Card pip colors, tuned for a white/cream card face like a physical card rather than
+ * the felt behind it. Four-color decks are standard in serious online poker because
  * diamonds and hearts are hard to tell apart at phone size; two-color stays available
  * for players who learned on physical cards.
  */
 export const suitColors = {
-  fourColor: { s: '#F2ECE4', h: '#E5544B', d: '#4FA3E3', c: '#5FBE84' },
-  twoColor: { s: '#F2ECE4', h: '#E5544B', d: '#E5544B', c: '#F2ECE4' },
+  fourColor: { s: '#1B1B1F', h: '#D6304A', d: '#2E7DD1', c: '#2E8B57' },
+  twoColor: { s: '#1B1B1F', h: '#D6304A', d: '#D6304A', c: '#1B1B1F' },
 } as const;
 
 export type DeckColorMode = keyof typeof suitColors;

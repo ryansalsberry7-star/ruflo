@@ -765,13 +765,13 @@ export default function TableScreen() {
             </View>
 
             <View style={[feltStyles.board, { top: tableHeight * 0.44, width: tableWidth }]}>
-              <View style={feltStyles.potRow}>
-                {/* Real chips in the middle, sized by the pot, that sweep to the winner. */}
-                <PotChips amount={table?.pot ?? 0} pushTo={potPush} pushKey={potPushKey} />
-                <View style={feltStyles.potPill}>
-                  <Text style={feltStyles.potText}>Pot ${table?.pot.toFixed(2) ?? '0.00'}</Text>
-                </View>
+              <View style={feltStyles.potPill}>
+                <Text style={feltStyles.potText}>Pot ${table?.pot.toFixed(2) ?? '0.00'}</Text>
               </View>
+              {/* Real chips, sized by the pot, that sweep to the winner. Centered under
+                  the label rather than sharing a row with it, so the pile itself sits in
+                  the middle of the felt instead of hugging one side of the row. */}
+              <PotChips amount={table?.pot ?? 0} pushTo={potPush} pushKey={potPushKey} />
               <View style={feltStyles.boardCards}>
                 {communityCards.length > 0
                   ? communityCards.map((card, index) => <DealtCard key={`${card}-${index}`} id={card} index={index} />)
@@ -1122,7 +1122,6 @@ const feltStyles = StyleSheet.create({
   brandSub: { color: 'rgba(255,255,255,0.06)', fontSize: fontSize.md, fontWeight: '900', letterSpacing: 2 },
   dealerStageAnchor: { position: 'absolute', overflow: 'hidden' },
   board: { position: 'absolute', alignItems: 'center', gap: 8 },
-  potRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   potPill: {
     backgroundColor: 'rgba(39,25,14,0.72)',
     borderRadius: 7,
