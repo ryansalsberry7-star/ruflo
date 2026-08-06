@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, radius } from '../lib/theme';
+import { colors, numericFont, radius } from '../lib/theme';
 import {
   clampRaiseTo,
   formatChips,
@@ -217,9 +217,9 @@ export function ActionBar({ table, playerId, seated, countdown, turnActionSecond
           </Pressable>
         ) : (
           legal.canAllIn && (
-            <Pressable style={[styles.action, styles.raiseAction]} onPress={() => onAction('all-in')}>
-              <Text style={styles.actionTextDark}>All-in</Text>
-              <Text style={styles.actionAmountDark}>{formatChips(legal.maxRaiseTo)}</Text>
+            <Pressable style={[styles.action, styles.allInAction]} onPress={() => onAction('all-in')}>
+              <Text style={styles.actionText}>All-in</Text>
+              <Text style={styles.actionAmount}>{formatChips(legal.maxRaiseTo)}</Text>
             </Pressable>
           )
         )}
@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   sliderFill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: colors.surfaceActive },
-  sliderValue: { color: colors.text, fontSize: 14, fontWeight: '800', textAlign: 'center' },
+  sliderValue: { color: colors.text, fontSize: 14, fontWeight: '800', textAlign: 'center', ...numericFont },
 
   actionRow: { flexDirection: 'row', gap: 8 },
   action: {
@@ -321,8 +321,11 @@ const styles = StyleSheet.create({
   foldAction: { backgroundColor: colors.fold },
   callAction: { backgroundColor: colors.call },
   raiseAction: { backgroundColor: colors.gold },
+  // Hot coral, not gold -- all-in is the one moment on this bar that should read as a
+  // spike rather than a routine action.
+  allInAction: { backgroundColor: colors.allIn },
   actionText: { color: colors.text, fontSize: 15, fontWeight: '800' },
-  actionAmount: { color: colors.text, fontSize: 12, fontWeight: '600', opacity: 0.85 },
+  actionAmount: { color: colors.text, fontSize: 12, fontWeight: '600', opacity: 0.85, ...numericFont },
   actionTextDark: { color: colors.ink, fontSize: 15, fontWeight: '900' },
-  actionAmountDark: { color: colors.ink, fontSize: 12, fontWeight: '700', opacity: 0.8 },
+  actionAmountDark: { color: colors.ink, fontSize: 12, fontWeight: '700', opacity: 0.8, ...numericFont },
 });

@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surfaceRaised,
   },
-  toggleChipActive: { borderColor: colors.positive, backgroundColor: 'rgba(95,190,132,0.16)' },
+  toggleChipActive: { borderColor: colors.positive, backgroundColor: 'rgba(51,232,168,0.16)' },
   toggleChipText: { color: colors.textMuted, fontSize: 11, fontWeight: '800' },
   toggleChipTextActive: { color: colors.positive },
   toggleCaption: { color: colors.textFaint, fontSize: 10, lineHeight: 14 },

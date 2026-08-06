@@ -12,7 +12,7 @@ import { useAuth } from './lib/auth';
 import { getJson, postJson, resolveWebSocketBaseUrl } from './lib/api';
 import { getPlayerCharacter, resolveCharacterId } from './lib/playerIdentity';
 import { useTablePreferences } from './lib/tablePreferences';
-import { colors, fontSize } from './lib/theme';
+import { colors, fontSize, numericFont } from './lib/theme';
 import type { DeckColorMode } from './lib/theme';
 import { formatChips, getLegalActions } from './lib/betting';
 import type { ActionKind, GameVariant, TablePlayer, TableState } from './lib/betting';
@@ -101,10 +101,11 @@ function DealtCard({ id, index }: { id: string; index: number }): JSX.Element {
   );
 }
 
-// Cyan ring that pulses around the seat whose turn it is.
-/** Turn indicator by default (gold, slow loop). The winner's seat reuses this at a
- *  faster pace in green -- same visual language, different meaning. */
-function PulseRing({ color = colors.gold, duration = 1100 }: { color?: string; duration?: number }): JSX.Element {
+// Electric mint ring that pulses around the seat whose turn it is -- the "live/action"
+// accent, reserved for exactly this kind of "this is happening now" cue.
+/** Turn indicator by default (mint, slow loop). The winner's seat reuses this at a
+ *  faster pace in the positive color -- same visual language, different meaning. */
+function PulseRing({ color = colors.mint, duration = 1100 }: { color?: string; duration?: number }): JSX.Element {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const loop = Animated.loop(Animated.timing(anim, { toValue: 1, duration, useNativeDriver: false }));
@@ -766,7 +767,9 @@ export default function TableScreen() {
 
             <View style={[feltStyles.board, { top: tableHeight * 0.44, width: tableWidth }]}>
               <View style={feltStyles.potPill}>
-                <Text style={feltStyles.potText}>Pot ${table?.pot.toFixed(2) ?? '0.00'}</Text>
+                <Text style={feltStyles.potLabel}>
+                  Pot <Text style={feltStyles.potText}>${table?.pot.toFixed(2) ?? '0.00'}</Text>
+                </Text>
               </View>
               {/* Real chips, sized by the pot, that sweep to the winner. Centered under
                   the label rather than sharing a row with it, so the pile itself sits in
@@ -930,7 +933,7 @@ export default function TableScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   centered: { flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
-  message: { color: '#F3DCD2', fontSize: fontSize.xl, textAlign: 'center', lineHeight: 22 },
+  message: { color: colors.textMuted, fontSize: fontSize.xl, textAlign: 'center', lineHeight: 22 },
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { paddingHorizontal: 10, paddingTop: 32, paddingBottom: 16, gap: 14 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 8 },
@@ -963,10 +966,10 @@ const styles = StyleSheet.create({
   roomStage: {
     marginHorizontal: 8,
     borderWidth: 1,
-    borderColor: '#3A2019',
+    borderColor: colors.borderSubtle,
     borderRadius: 18,
     overflow: 'hidden',
-    backgroundColor: '#12070A',
+    backgroundColor: colors.bg,
   },
   // Soft dark radial-ish glow above the felt, standing in for pit lighting without a
   // real gradient dependency (layered flat views, low-opacity center to dark edge).
@@ -977,7 +980,7 @@ const styles = StyleSheet.create({
     right: '10%',
     height: 160,
     borderRadius: 999,
-    backgroundColor: 'rgba(241,196,110,0.05)',
+    backgroundColor: 'rgba(203,178,126,0.05)',
   },
   errorText: { color: colors.danger, fontSize: fontSize.base, lineHeight: 18, textAlign: 'center' },
   tableStrip: {
@@ -996,10 +999,10 @@ const styles = StyleSheet.create({
   },
   windowDotRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.textFaint },
-  liveDotOn: { backgroundColor: '#4ADE80', shadowColor: '#4ADE80', shadowOpacity: 0.9, shadowRadius: 6 },
+  liveDotOn: { backgroundColor: colors.mint, shadowColor: colors.mint, shadowOpacity: 0.9, shadowRadius: 6 },
   stripText: { color: colors.textMuted, fontSize: fontSize.md, fontWeight: '800', letterSpacing: 0.8 },
   stripDivider: { color: colors.textFaint, fontSize: fontSize.base },
-  stripTimer: { color: colors.gold, fontSize: fontSize.base, fontWeight: '900' },
+  stripTimer: { color: colors.mint, fontSize: fontSize.base, fontWeight: '900', ...numericFont },
   audioPanel: {
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
@@ -1045,7 +1048,7 @@ const styles = StyleSheet.create({
   },
   statTileHighlight: {
     borderColor: colors.gold,
-    backgroundColor: 'rgba(241,196,110,0.12)',
+    backgroundColor: 'rgba(203,178,126,0.12)',
   },
   statLabel: {
     color: colors.textMuted,
@@ -1058,6 +1061,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: fontSize.xxl,
     fontWeight: '900',
+    ...numericFont,
   },
   primaryButton: {
     backgroundColor: colors.gold,
@@ -1075,7 +1079,7 @@ const feltStyles = StyleSheet.create({
     position: 'relative',
     backgroundColor: colors.felt,
     borderWidth: 11,
-    borderColor: '#2E1B10',
+    borderColor: '#15181D',
     alignSelf: 'center',
     shadowColor: '#000',
     shadowOpacity: 0.55,
@@ -1083,8 +1087,8 @@ const feltStyles = StyleSheet.create({
     shadowOffset: { width: 0, height: 12 },
     elevation: 8,
   },
-  // Thin brass line right at the seam between the wood rail and the cloth — the single
-  // most legible "real table, not an app skin" cue.
+  // Thin champagne-gold line right at the seam between the rail and the cloth — the
+  // single most legible "real table, not an app skin" cue.
   feltPinstripe: {
     position: 'absolute',
     top: 0,
@@ -1092,7 +1096,7 @@ const feltStyles = StyleSheet.create({
     right: 0,
     bottom: 0,
     borderWidth: 2,
-    borderColor: 'rgba(225,184,101,0.55)',
+    borderColor: 'rgba(203,178,126,0.55)',
   },
   feltRim: {
     position: 'absolute',
@@ -1101,11 +1105,11 @@ const feltStyles = StyleSheet.create({
     right: 8,
     bottom: 8,
     borderWidth: 2.5,
-    borderColor: 'rgba(6,28,18,0.4)',
+    borderColor: 'rgba(8,40,33,0.4)',
   },
   feltGlow: {
     position: 'absolute',
-    backgroundColor: 'rgba(255,244,210,0.07)',
+    backgroundColor: 'rgba(242,240,234,0.07)',
   },
   feltInner: {
     position: 'absolute',
@@ -1114,7 +1118,7 @@ const feltStyles = StyleSheet.create({
     right: '7%',
     bottom: '11%',
     borderWidth: 3,
-    borderColor: 'rgba(9,40,26,0.3)',
+    borderColor: 'rgba(8,40,33,0.3)',
     backgroundColor: 'rgba(255,255,255,0.015)',
   },
   brandMark: { position: 'absolute', alignItems: 'center', gap: 3 },
@@ -1130,7 +1134,8 @@ const feltStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(240,210,120,0.5)',
   },
-  potText: { color: '#FBE7A8', fontSize: fontSize.lg, fontWeight: '800', letterSpacing: 0.5 },
+  potLabel: { color: colors.textMuted, fontSize: fontSize.lg, fontWeight: '800', letterSpacing: 0.5 },
+  potText: { color: colors.gold, fontSize: fontSize.lg, fontWeight: '900', ...numericFont },
   boardCards: { flexDirection: 'row', gap: 6 },
   streetText: {
     color: 'rgba(255,244,231,0.6)',
@@ -1209,7 +1214,7 @@ const seatStyles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 3,
   },
-  winOddsBadgeText: { fontSize: fontSize.micro, fontWeight: '900' },
+  winOddsBadgeText: { fontSize: fontSize.micro, fontWeight: '900', ...numericFont },
   // Single-hue chip dot, not the pot's photorealistic multi-denomination pile -- that
   // many-coloured art was fighting the app's restrained wine/gold identity at every seat.
   stackRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 1 },
@@ -1221,7 +1226,7 @@ const seatStyles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.gold,
   },
-  stackAmount: { color: colors.text, fontSize: fontSize.sm, fontWeight: '800' },
+  stackAmount: { color: colors.text, fontSize: fontSize.sm, fontWeight: '800', ...numericFont },
   pod: {
     width: 58,
     alignItems: 'center',
@@ -1311,13 +1316,13 @@ const seatStyles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#3A2414',
+    backgroundColor: '#2E2818',
     borderWidth: 1,
-    borderColor: '#E7C57D',
+    borderColor: colors.gold,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  trustShieldText: { color: '#F9E8BD', fontSize: fontSize.micro, fontWeight: '900' },
+  trustShieldText: { color: '#F3E9D2', fontSize: fontSize.micro, fontWeight: '900' },
   dealerButton: {
     position: 'absolute',
     right: -4,

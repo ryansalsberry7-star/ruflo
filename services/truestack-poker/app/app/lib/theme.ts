@@ -1,56 +1,86 @@
+import { Platform, type TextStyle } from 'react-native';
+
 /**
- * Shared visual tokens.
+ * Shared visual tokens -- "Aurora Table: Night Session".
  *
- * The app previously carried two unrelated palettes -- a wine/gold set on the table,
- * home, and auth screens, and a navy/blue set on the lobby, wallet, and info screens --
- * so the core journey (home -> lobby -> table) flipped identity twice. These tokens are
- * the wine/gold set, which reads as poker rather than generic fintech; screens should
- * import from here instead of hardcoding hex values.
+ * Direction: private high-stakes table, not Vegas carpet. A near-black graphite base
+ * (cooler and darker than the old burgundy so the felt and cards do the work of
+ * reading as "poker") with a deep petrol-emerald felt, gold demoted to a restrained
+ * status/accent color rather than the dominant hue, electric mint reserved for
+ * live/action states, and hot coral held back for all-in/danger so it still reads as
+ * a spike when it appears. Screens should import from here instead of hardcoding hex
+ * values -- table.tsx, lobby.tsx, ActionBar.tsx, StartingHandMatrix.tsx, and
+ * HoleCards.tsx already do; other screens still carry the earlier wine/gold literals
+ * and are unaffected by this palette until they're migrated too.
  */
 
 export const colors = {
   /** Screen backgrounds, darkest to lightest. */
-  bg: '#17090D',
-  surface: '#221017',
-  surfaceRaised: '#2C141C',
-  border: '#4B2630',
-  borderSubtle: '#341A21',
+  bg: '#0A0C10',
+  surface: '#12151A',
+  surfaceRaised: '#1A1E24',
+  border: '#2B3038',
+  borderSubtle: '#1E2229',
 
-  /** Brand accent. Used for primary actions and the hero seat ring. */
-  gold: '#F1C46E',
-  goldDim: '#7A4A53',
+  /** Restrained champagne gold. Status/accent only now -- raise/bet CTAs and the
+   *  hero seat ring, not the dominant hue it was in the burgundy palette. */
+  gold: '#CBB27E',
+  goldDim: '#6B5F49',
   /** Muted gold border for secondary tags/pills (match chips, filter pills) -- distinct
-   *  from goldDim, which reads warmer/rosier. Was drifting as an unnamed literal across
-   *  table.tsx and lobby.tsx before this. */
-  goldMuted: '#8A6A45',
+   *  from goldDim, which reads darker/flatter. */
+  goldMuted: '#8A7A55',
 
   /** Text, most to least prominent. */
-  text: '#FFF4E7',
-  textMuted: '#B99D93',
-  textFaint: '#8C7069',
+  text: '#F2F0EA',
+  textMuted: '#9AA0A8',
+  textFaint: '#666C74',
 
-  /** Selected/active tint for chips, pills, and sliders -- was a recurring unnamed
-   *  literal duplicated across table.tsx, lobby.tsx, and ActionBar.tsx. */
-  surfaceActive: '#3A1E22',
-  /** Near-black foreground for text sitting on light/gold surfaces (raise button,
-   *  dealer button, checkmarks) -- was a recurring unnamed literal in table.tsx and
-   *  ActionBar.tsx. */
-  ink: '#2A1118',
+  /** Selected/active tint for chips, pills, and sliders. */
+  surfaceActive: '#20262E',
+  /** Near-black foreground for text sitting on light/gold/mint surfaces (raise
+   *  button, dealer button, checkmarks). */
+  ink: '#0E1013',
 
-  /** Felt. */
-  felt: '#1E5E43',
-  feltDark: '#123B2A',
+  /** Felt: deep petrol-emerald rather than a bright casino green. */
+  felt: '#0E3B34',
+  feltDark: '#082821',
+
+  /** Electric mint -- the "live/action" accent: live-table dot, active-turn glow,
+   *  timer sweep. Distinct from gold, which is now a calmer status color. */
+  mint: '#2FE5AE',
 
   /** Action semantics. */
-  fold: '#8E3B3B',
-  call: '#2F6D4F',
-  raise: '#F1C46E',
-  danger: '#D9534F',
-  positive: '#5FBE84',
+  fold: '#7A3B36',
+  call: '#1F8F6E',
+  raise: '#CBB27E',
+  danger: '#FF5C4D',
+  /** All-in reuses danger's hot coral -- same "this is the big one" register. */
+  allIn: '#FF5C4D',
+  positive: '#33E8A8',
+
+  /** Data-viz tones reserved for the study-layer matrix (VPIP/EV/frequency heatmaps) --
+   *  not yet drawn anywhere, defined now so that pass has a palette to pull from
+   *  instead of inventing ad hoc hex values later. */
+  dataCyan: '#3FD0E6',
+  dataViolet: '#9C86FF',
+  dataLime: '#B6E64A',
+  dataAmber: '#FFC24B',
 } as const;
 
 export const radius = { sm: 8, md: 12, lg: 16, xl: 20, pill: 999 } as const;
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const;
+
+/**
+ * Tabular numeric style for stacks, pots, blinds, and timers -- money and countdowns
+ * should line up and hold a fixed width as digits change, not reflow with the
+ * proportional body font. No condensed/grotesk display typeface is bundled yet (that
+ * needs an actual font file + expo-font setup once a specific face is chosen); this is
+ * the piece of the typography direction that's achievable with the system font today.
+ */
+export const numericFont: TextStyle = {
+  fontVariant: ['tabular-nums'],
+  fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+};
 
 /**
  * Type scale. The table screen had accumulated 16 distinct one-off `fontSize` values
