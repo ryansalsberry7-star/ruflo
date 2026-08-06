@@ -72,7 +72,11 @@ export function ChipPile({ amount, size = 16, showLabel = true, columns = 1 }: C
     stacks.push(chips.slice(index, index + perColumn));
   }
 
-  const lift = Math.max(2, Math.round(size * 0.22));
+  // Each chip below the top of a stack shows only its rim -- the thin colored band a
+  // real chip's edge shows when it's sitting under another one -- rather than a full
+  // second disc, which is what turned a tall stack into a flower of overlapping
+  // ellipses instead of a token stack.
+  const edgeHeight = Math.max(4, Math.round(size * 0.24));
 
   return (
     <View style={styles.pileRow}>
@@ -80,26 +84,54 @@ export function ChipPile({ amount, size = 16, showLabel = true, columns = 1 }: C
         {stacks.map((stack, stackIndex) => (
           <View
             key={stackIndex}
-            style={{ width: size, height: size * 0.45 + (stack.length - 1) * lift, justifyContent: 'flex-end' }}
+            style={{ width: size, height: size + (stack.length - 1) * edgeHeight, justifyContent: 'flex-end' }}
           >
-            {stack.map((chip, chipIndex) => (
-              <View
-                key={chipIndex}
-                style={[
-                  styles.chip,
-                  {
-                    bottom: chipIndex * lift,
-                    width: size,
-                    height: Math.max(5, size * 0.45),
-                    borderRadius: size,
-                    backgroundColor: chip.body,
-                    borderColor: chip.edge,
-                  },
-                ]}
-              >
-                <View style={[styles.chipStripe, { backgroundColor: chip.accent }]} />
-              </View>
-            ))}
+            {stack.map((chip, chipIndex) => {
+              const isTop = chipIndex === stack.length - 1;
+              if (isTop) {
+                return (
+                  <View
+                    key={chipIndex}
+                    style={[
+                      styles.chipDisc,
+                      {
+                        bottom: chipIndex * edgeHeight,
+                        width: size,
+                        height: size,
+                        borderRadius: size / 2,
+                        borderWidth: Math.max(1.5, size * 0.12),
+                        backgroundColor: chip.body,
+                        borderColor: chip.accent,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.chipDiscCenter,
+                        { width: size * 0.42, height: size * 0.42, borderRadius: (size * 0.42) / 2, backgroundColor: chip.edge },
+                      ]}
+                    />
+                  </View>
+                );
+              }
+              return (
+                <View
+                  key={chipIndex}
+                  style={[
+                    styles.chipEdge,
+                    {
+                      bottom: chipIndex * edgeHeight,
+                      width: size,
+                      height: edgeHeight,
+                      borderRadius: edgeHeight / 2,
+                      backgroundColor: chip.edge,
+                    },
+                  ]}
+                >
+                  <View style={[styles.chipEdgeMark, { backgroundColor: chip.accent }]} />
+                </View>
+              );
+            })}
           </View>
         ))}
       </View>
@@ -175,13 +207,26 @@ export function PotChips({ amount, pushTo, pushKey = 0, size = 20, columns = 3, 
 const styles = StyleSheet.create({
   pileRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 5 },
   stacksRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
-  chip: {
+  // The top chip in a stack: a full disc with a dashed accent rim (the classic casino
+  // chip edge-spot pattern) and a smaller center dot in the edge color for depth.
+  chipDisc: {
     position: 'absolute',
-    borderWidth: 1,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 1.5,
+  },
+  chipDiscCenter: { opacity: 0.9 },
+  // Everything below the top chip: just the rim a stacked chip shows from the side.
+  chipEdge: {
+    position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  chipStripe: { width: '52%', height: 1.5, borderRadius: 1, opacity: 0.9 },
+  chipEdgeMark: { width: '46%', height: 1.5, borderRadius: 1, opacity: 0.9 },
   amount: {
     color: '#FFF4E7',
     fontWeight: '800',

@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, radius, suitColors, type DeckColorMode } from '../lib/theme';
+import { suitColors, type DeckColorMode } from '../lib/theme';
 
 const SUIT_SYMBOL: Record<string, string> = { s: '♠', h: '♥', d: '♦', c: '♣' };
 
@@ -23,15 +23,15 @@ export function CardFace({ id, deckMode, size = 'md' }: CardFaceProps) {
   const dims = size === 'lg' ? cardDims.lg : size === 'sm' ? cardDims.sm : cardDims.md;
 
   if (!parsed) {
-    return <View style={[styles.card, dims, styles.cardBack]} />;
+    return <View style={[styles.card, dims, { borderRadius: dims.radius }, styles.cardBack]} />;
   }
 
   const color = suitColors[deckMode][parsed.suit as keyof (typeof suitColors)['fourColor']];
 
   return (
-    <View style={[styles.card, dims]}>
-      <Text style={[styles.rank, { color, fontSize: dims.height * 0.32 }]}>{parsed.rank}</Text>
-      <Text style={[styles.suit, { color, fontSize: dims.height * 0.3 }]}>{SUIT_SYMBOL[parsed.suit]}</Text>
+    <View style={[styles.card, dims, { borderRadius: dims.radius }]}>
+      <Text style={[styles.rank, { color, fontSize: dims.height * 0.34 }]}>{parsed.rank}</Text>
+      <Text style={[styles.suit, { color, fontSize: dims.height * 0.44 }]}>{SUIT_SYMBOL[parsed.suit]}</Text>
     </View>
   );
 }
@@ -62,7 +62,7 @@ export function HoleCards({ cards, deckMode, faceDown = false, size = 'md', card
     return (
       <View style={styles.row}>
         {Array.from({ length: backs }, (_, index) => (
-          <View key={index} style={[styles.card, dims, styles.cardBack, tiltFor(index, backs)]} />
+          <View key={index} style={[styles.card, dims, { borderRadius: dims.radius }, styles.cardBack, tiltFor(index, backs)]} />
         ))}
       </View>
     );
@@ -81,26 +81,28 @@ export function HoleCards({ cards, deckMode, faceDown = false, size = 'md', card
 
 const cardDims = {
   // 9-max seats around a phone-width felt only have ~70-85px of clearance between
-  // neighbors, so opponent card backs stay small — see table.tsx SEAT_SLOTS.
-  sm: { width: 16, height: 24 },
-  md: { width: 30, height: 43 },
-  lg: { width: 42, height: 60 },
+  // neighbors, so opponent card backs stay small — see table.tsx SEAT_SLOTS. Radius
+  // scales with width instead of reusing one fixed token: a flat 8px corner reads fine
+  // at 42px wide but is nearly a third of the card's own width at 16px, which looked
+  // like a rounded lozenge rather than a card.
+  sm: { width: 16, height: 24, radius: 2 },
+  md: { width: 30, height: 43, radius: 4 },
+  lg: { width: 42, height: 60, radius: 6 },
 };
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 2 },
   card: {
     backgroundColor: '#FAF6EC',
-    borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: '#C9BFA8',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 1.5 },
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 3,
   },
   cardBack: { backgroundColor: '#5B2733', borderColor: '#8A4453' },
   rank: { fontWeight: '900', lineHeight: undefined },

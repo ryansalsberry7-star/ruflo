@@ -6,6 +6,7 @@ import { ActionBar } from './components/ActionBar';
 import { HoleCards } from './components/HoleCards';
 import { StartingHandMatrix } from './components/StartingHandMatrix';
 import { BetChips, PotChips } from './components/Chips';
+import { TimerRing } from './components/TimerRing';
 import { DealerStage } from './components/live-dealer/DealerStage';
 import { useDealerController } from './components/live-dealer/dealerController';
 import { useAuth } from './lib/auth';
@@ -148,6 +149,9 @@ interface SeatPodProps {
   winOdds?: number | null;
   /** True for ~900ms right after this seat takes down a pot -- drives the win-glow pulse. */
   isWinner?: boolean;
+  /** Seconds left in this seat's turn, or null when it isn't this seat's turn. Drives
+   *  the timer ring around the avatar. */
+  turnCountdown?: number | null;
 }
 
 function SeatPod({
@@ -165,6 +169,7 @@ function SeatPod({
   podWidth,
   winOdds,
   isWinner,
+  turnCountdown,
 }: SeatPodProps): JSX.Element {
   // A fold should read as a decision, not a glitch -- cards slide away instead of
   // vanishing the instant `folded` flips true. HoleCards keeps rendering (still
@@ -238,32 +243,48 @@ function SeatPod({
         </View>
       ) : null}
       <View style={[seatStyles.plate, { width: podWidth }, isHero && seatStyles.heroPlate, isTurn && seatStyles.turnPlate]}>
-        <View style={seatStyles.avatarRing}>
-          <View style={[seatStyles.avatarAccentRing, { borderColor: character.accent }]}>
-            <View style={[seatStyles.avatar, { backgroundColor: character.aura }]}>
-              <Text style={seatStyles.avatarEmoji}>{character.emoji}</Text>
+        <View style={seatStyles.avatarWrap}>
+          {/* Burns down over the seat's turn -- same footprint as the avatar ring itself
+              (no extra layout weight for the other 8 seats that aren't acting), traced
+              just outside its existing gold border. */}
+          {isTurn && typeof turnCountdown === 'number' ? (
+            <TimerRing
+              size={20}
+              strokeWidth={2}
+              progress={Math.max(0, Math.min(1, turnCountdown / TURN_ACTION_SECONDS))}
+              color={turnCountdown <= 5 ? colors.danger : colors.mint}
+            />
+          ) : null}
+          <View style={seatStyles.avatarRing}>
+            <View style={[seatStyles.avatarAccentRing, { borderColor: character.accent }]}>
+              <View style={[seatStyles.avatar, { backgroundColor: character.aura }]}>
+                <Text style={seatStyles.avatarEmoji}>{character.emoji}</Text>
+              </View>
             </View>
+            {/* Win odds rides on the avatar ring rather than its own row -- this pod already
+                fought (and re-fought) a height-crowding bug, so a badge that overlaps space
+                the ring already reserves costs nothing, unlike a fourth stacked block would. */}
+            {isHero && typeof winOdds === 'number' ? (
+              <View style={[seatStyles.winOddsBadge, { borderColor: winOdds >= 50 ? colors.positive : colors.fold }]}>
+                <Text style={[seatStyles.winOddsBadgeText, { color: winOdds >= 50 ? colors.positive : colors.fold }]}>
+                  {winOdds}%
+                </Text>
+              </View>
+            ) : null}
+            {verifiedHuman ? (
+              <View style={seatStyles.trustShield}>
+                <Text style={seatStyles.trustShieldText}>H</Text>
+              </View>
+            ) : null}
+            {/* One badge slot for whichever position matters this hand -- dealer button
+                takes priority (it's the physical object a table actually has); small/big
+                blind fall back to a compact text badge in the same corner. */}
+            {player.isDealer || player.isSmallBlind || player.isBigBlind ? (
+              <View style={seatStyles.dealerButton}>
+                <Text style={seatStyles.dealerButtonText}>{player.isDealer ? 'D' : player.isSmallBlind ? 'SB' : 'BB'}</Text>
+              </View>
+            ) : null}
           </View>
-          {/* Win odds rides on the avatar ring rather than its own row -- this pod already
-              fought (and re-fought) a height-crowding bug, so a badge that overlaps space
-              the ring already reserves costs nothing, unlike a fourth stacked block would. */}
-          {isHero && typeof winOdds === 'number' ? (
-            <View style={[seatStyles.winOddsBadge, { borderColor: winOdds >= 50 ? colors.positive : colors.fold }]}>
-              <Text style={[seatStyles.winOddsBadgeText, { color: winOdds >= 50 ? colors.positive : colors.fold }]}>
-                {winOdds}%
-              </Text>
-            </View>
-          ) : null}
-          {verifiedHuman ? (
-            <View style={seatStyles.trustShield}>
-              <Text style={seatStyles.trustShieldText}>H</Text>
-            </View>
-          ) : null}
-          {player.isDealer ? (
-            <View style={seatStyles.dealerButton}>
-              <Text style={seatStyles.dealerButtonText}>D</Text>
-            </View>
-          ) : null}
         </View>
         <View style={[seatStyles.nameTag, { borderColor: isHero ? colors.gold : character.accent }]}>
           <Text style={seatStyles.name} numberOfLines={1}>
@@ -851,6 +872,7 @@ export default function TableScreen() {
                   onSit={!player ? () => void handleSit(index) : undefined}
                   winOdds={isHero ? winOdds : null}
                   isWinner={!!player && player.id === lastWinnerId}
+                  turnCountdown={table?.currentTurn === player?.id ? countdown : null}
                 />
               </View>
             ))}
@@ -1245,9 +1267,9 @@ const seatStyles = StyleSheet.create({
   plate: {
     minHeight: 46,
     borderRadius: 10,
-    backgroundColor: 'rgba(18,7,10,0.78)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(241,196,110,0.32)',
+    backgroundColor: 'rgba(10,12,16,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
     alignItems: 'center',
     justifyContent: 'flex-start',
     paddingTop: 3,
@@ -1259,28 +1281,38 @@ const seatStyles = StyleSheet.create({
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
   },
+  // The hero's own seat: a size and glow no opponent pod gets, so "you" reads as the
+  // one seat in command rather than one of nine identical boxes.
   heroPlate: {
     borderWidth: 1.5,
     borderColor: colors.gold,
-    backgroundColor: 'rgba(42,17,24,0.86)',
+    backgroundColor: 'rgba(26,30,36,0.92)',
+    shadowColor: colors.gold,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
+  // Mint, not gold -- "it's this seat's turn" is a live/action state, the same accent
+  // as the timer ring and live-table dot rather than the calmer status gold.
   turnPlate: {
     borderWidth: 1.5,
-    borderColor: colors.gold,
-    shadowColor: colors.gold,
+    borderColor: colors.mint,
+    shadowColor: colors.mint,
     shadowOpacity: 0.45,
     shadowRadius: 6,
   },
   emptyPlate: {
-    backgroundColor: 'rgba(18,7,10,0.5)',
+    backgroundColor: 'rgba(10,12,16,0.55)',
     borderStyle: 'dashed',
-    borderColor: 'rgba(241,196,110,0.28)',
+    borderColor: 'rgba(255,255,255,0.14)',
   },
   invitingPlate: {
     borderStyle: 'solid',
     borderColor: colors.gold,
-    backgroundColor: 'rgba(42,24,10,0.55)',
+    backgroundColor: 'rgba(30,26,14,0.6)',
   },
+  // Exact footprint of avatarRing -- the timer ring overlays this same 20x20 box rather
+  // than growing it, so the other 8 seats don't reflow when one starts (or stops) acting.
+  avatarWrap: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
   // Three concentric rings: brass (unified across every seat), the character's own
   // accent (keeps a sliver of persona identity), then the aura fill behind the emoji.
   avatarRing: {
@@ -1327,16 +1359,17 @@ const seatStyles = StyleSheet.create({
     position: 'absolute',
     right: -4,
     top: -4,
-    width: 12,
+    minWidth: 12,
     height: 12,
     borderRadius: 6,
+    paddingHorizontal: 2,
     backgroundColor: '#F3E9D2',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.ink,
   },
-  dealerButtonText: { color: colors.ink, fontSize: fontSize.xxs, fontWeight: '900' },
+  dealerButtonText: { color: colors.ink, fontSize: fontSize.xxs, fontWeight: '900', lineHeight: 9 },
   pulseRing: { position: 'absolute', top: 8, left: 1, right: 1, bottom: 16, borderRadius: 36, borderWidth: 2, borderColor: colors.gold },
   nameTag: {
     borderRadius: 6,
@@ -1348,8 +1381,8 @@ const seatStyles = StyleSheet.create({
     maxWidth: '100%',
   },
   name: { color: colors.text, fontSize: fontSize.xs, fontWeight: '800', maxWidth: '100%', textAlign: 'center' },
-  status: { color: 'rgba(255,244,231,0.55)', fontSize: fontSize.xxs, fontWeight: '800', marginTop: 0.5 },
-  statusActive: { color: colors.gold },
+  status: { color: 'rgba(242,240,234,0.55)', fontSize: fontSize.xxs, fontWeight: '800', marginTop: 0.5 },
+  statusActive: { color: colors.mint },
   emptyAvatar: {
     width: 22,
     height: 22,
