@@ -106,7 +106,7 @@ export const POSITION_LABELS: Record<NlhPosition, string> = {
  * concepts translate to 9-max by folding early seats into UTG/MP). BB's number covers the rare
  * "folded around to the walk" spot, not defending against a raise.
  */
-const OPEN_PERCENT: Record<NlhPosition, number> = {
+export const OPEN_PERCENT: Record<NlhPosition, number> = {
   UTG: 12,
   MP: 16,
   CO: 24,
@@ -269,7 +269,7 @@ export const PLO_CATEGORIES: PloCategory[] = [
   { id: 'trash', label: 'Trash / no synergy', example: 'K♠8♥4♥2♥', description: 'No suits working together, no connectivity. Fold from every position.', strength: 'weak' },
 ];
 
-const PLO_OPEN_PERCENT: Record<NlhPosition, number> = {
+export const PLO_OPEN_PERCENT: Record<NlhPosition, number> = {
   UTG: 8,
   MP: 12,
   CO: 20,

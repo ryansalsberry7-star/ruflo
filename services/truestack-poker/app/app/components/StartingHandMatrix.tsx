@@ -1,12 +1,14 @@
 import { memo, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors } from '../lib/theme';
 import type { GameVariant } from '../lib/betting';
 import {
   NLH_HANDS,
   NLH_HANDS_BY_ID,
   NLH_POSITIONS,
+  OPEN_PERCENT,
   PLO_CATEGORIES,
+  PLO_OPEN_PERCENT,
   POSITION_LABELS,
   RANKS,
   ploStrategyFor,
@@ -14,10 +16,12 @@ import {
   strategyBlurb,
   strategyFor,
   strengthColor,
+  strengthTier,
   type ActionTier,
   type HandStrategy,
   type NlhHand,
   type NlhPosition,
+  type StrengthTier,
 } from '../lib/handRanges';
 
 interface StartingHandMatrixProps {
@@ -26,6 +30,54 @@ interface StartingHandMatrixProps {
 }
 
 const ACTION_CODE: Record<ActionTier, string> = { raise: 'R', mixed: 'M', occasional: '?', fold: '' };
+
+type MatrixTab = 'range' | 'frequency' | 'ev' | 'notes';
+const MATRIX_TABS: Array<{ key: MatrixTab; label: string }> = [
+  { key: 'range', label: 'Range' },
+  { key: 'frequency', label: 'Frequency' },
+  { key: 'ev', label: 'EV' },
+  { key: 'notes', label: 'Notes' },
+];
+
+const STRENGTH_ORDER: StrengthTier[] = ['weak', 'marginal', 'playable', 'strong', 'premium'];
+
+/** Linear interpolation between two hex colors, t clamped to [0,1]. */
+function mixHex(from: string, to: string, t: number): string {
+  const clamped = Math.max(0, Math.min(1, t));
+  const a = parseInt(from.slice(1), 16);
+  const b = parseInt(to.slice(1), 16);
+  const channel = (shift: number) => {
+    const av = (a >> shift) & 255;
+    const bv = (b >> shift) & 255;
+    return Math.round(av + (bv - av) * clamped);
+  };
+  const r = channel(16);
+  const g = channel(8);
+  const bl = channel(0);
+  return `#${[r, g, bl].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** Single-hue intensity step: a dim neutral base brightening toward `hue` as t rises to 1.
+ *  Text flips to dark ink once the cell is bright enough to need it -- this is what makes
+ *  the grid read as a heatmap (one color, varying intensity) instead of the old palette of
+ *  five unrelated hues. */
+function heatCell(t: number, hue: string): { bg: string; text: string } {
+  const bg = mixHex('#1B2320', hue, Math.max(0, Math.min(1, t)));
+  return { bg, text: t < 0.45 ? 'rgba(242,240,234,0.9)' : colors.ink };
+}
+
+/** EV is signed -- a diverging scale (coral for negative, mint for positive) reads far
+ *  more like a trading-terminal P&L than a single ramp would. */
+function evHeatCell(ev: number): { bg: string; text: string } {
+  const norm = Math.max(-1, Math.min(1, ev / 5));
+  return norm >= 0 ? heatCell(norm, colors.positive) : heatCell(-norm, colors.danger);
+}
+
+function cellVisual(tab: MatrixTab, tier: StrengthTier, strategy: HandStrategy): { bg: string; text: string } {
+  if (tab === 'frequency') return heatCell(strategy.frequency / 100, colors.dataAmber);
+  if (tab === 'ev') return evHeatCell(strategy.ev);
+  return heatCell(STRENGTH_ORDER.indexOf(tier) / (STRENGTH_ORDER.length - 1), colors.mint);
+}
 
 /**
  * Collapsed by default (unless `defaultExpanded`), and the entire grid/category list (data
@@ -36,20 +88,31 @@ const ACTION_CODE: Record<ActionTier, string> = { raise: 'R', mixed: 'M', occasi
 function StartingHandMatrixImpl({ variant, defaultExpanded = false }: StartingHandMatrixProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [position, setPosition] = useState<NlhPosition>('CO');
-  const [showAction, setShowAction] = useState(true);
-  const [showFrequency, setShowFrequency] = useState(false);
-  const [showEV, setShowEV] = useState(false);
+  const [activeTab, setActiveTab] = useState<MatrixTab>('range');
   const [selectedHandId, setSelectedHandId] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  // Ephemeral, per session -- not persisted to disk. A quick place to jot a read during
+  // play, not a full note-taking feature.
+  const [notes, setNotes] = useState<Record<string, string>>({});
+
+  const openPercent = variant === 'plo' ? PLO_OPEN_PERCENT[position] : OPEN_PERCENT[position];
+  const insight = `${position} opens ${Math.round(openPercent)}% here`;
 
   if (!expanded) {
     return (
       <Pressable style={styles.collapsedBar} onPress={() => setExpanded(true)}>
-        <Text style={styles.collapsedTitle}>Starting Hand Matrix</Text>
+        <View>
+          <Text style={styles.collapsedTitle}>Starting Hand Matrix</Text>
+          {/* Pinned insight -- visible even collapsed, so it's not locked behind opening
+              the whole study layer during a hand. */}
+          <Text style={styles.collapsedInsight}>{insight}</Text>
+        </View>
         <Text style={styles.chevron}>{'›'}</Text>
       </Pressable>
     );
   }
+
+  const notesKey = `${variant}:${position}`;
 
   return (
     <View style={styles.container}>
@@ -76,35 +139,54 @@ function StartingHandMatrixImpl({ variant, defaultExpanded = false }: StartingHa
           ))}
         </View>
       </ScrollView>
-      <Text style={styles.positionCaption}>{POSITION_LABELS[position]} — opening range if first to act</Text>
-
-      <View style={styles.toggleRow}>
-        <ToggleChip label="Action" active={showAction} onPress={() => setShowAction((value) => !value)} />
-        <ToggleChip label="Frequency" active={showFrequency} onPress={() => setShowFrequency((value) => !value)} />
-        <ToggleChip label="EV" active={showEV} onPress={() => setShowEV((value) => !value)} />
+      <View style={styles.insightPill}>
+        <Text style={styles.insightText}>{insight}</Text>
       </View>
-      <Text style={styles.toggleCaption}>
-        Grid shows one value at a time (Action, then Frequency, then EV) — tap any hand for the full breakdown.
-      </Text>
 
-      {variant === 'plo' ? (
-        <PloCategoryList
-          position={position}
-          showAction={showAction}
-          showFrequency={showFrequency}
-          showEV={showEV}
-          selectedId={selectedCategoryId}
-          onSelect={setSelectedCategoryId}
-        />
+      <View style={styles.tabRow}>
+        {MATRIX_TABS.map((tab) => (
+          <Pressable
+            key={tab.key}
+            onPress={() => setActiveTab(tab.key)}
+            style={[styles.tabChip, activeTab === tab.key && styles.tabChipActive]}
+          >
+            <Text style={[styles.tabLabel, activeTab === tab.key && styles.tabLabelActive]}>{tab.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {activeTab === 'notes' ? (
+        <View style={styles.notesWrap}>
+          <Text style={styles.toggleCaption}>Reads and reminders for {POSITION_LABELS[position]} ({position}). Cleared when the app restarts.</Text>
+          <TextInput
+            style={styles.notesInput}
+            value={notes[notesKey] ?? ''}
+            onChangeText={(text) => setNotes((current) => ({ ...current, [notesKey]: text }))}
+            placeholder={`e.g. "Villain opens ${position} way too wide -- 3-bet light here."`}
+            placeholderTextColor={colors.textFaint}
+            multiline
+          />
+        </View>
       ) : (
-        <NlhGrid
-          position={position}
-          showAction={showAction}
-          showFrequency={showFrequency}
-          showEV={showEV}
-          selectedId={selectedHandId}
-          onSelect={setSelectedHandId}
-        />
+        <>
+          <Text style={styles.toggleCaption}>
+            {activeTab === 'range'
+              ? 'Heatmap shades by hand strength -- tap any hand for the full breakdown.'
+              : activeTab === 'frequency'
+                ? 'Heatmap shades by how often the range opens this hand.'
+                : 'Diverging heatmap: coral for -EV, mint for +EV, by magnitude.'}
+          </Text>
+          {variant === 'plo' ? (
+            <PloCategoryList
+              position={position}
+              activeTab={activeTab}
+              selectedId={selectedCategoryId}
+              onSelect={setSelectedCategoryId}
+            />
+          ) : (
+            <NlhGrid position={position} activeTab={activeTab} selectedId={selectedHandId} onSelect={setSelectedHandId} />
+          )}
+        </>
       )}
     </View>
   );
@@ -112,31 +194,21 @@ function StartingHandMatrixImpl({ variant, defaultExpanded = false }: StartingHa
 
 export const StartingHandMatrix = memo(StartingHandMatrixImpl);
 
-function ToggleChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={[styles.toggleChip, active && styles.toggleChipActive]}>
-      <Text style={[styles.toggleChipText, active && styles.toggleChipTextActive]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function cellOverlayText(strategy: HandStrategy, showAction: boolean, showFrequency: boolean, showEV: boolean): string {
-  if (showAction) return ACTION_CODE[strategy.action];
-  if (showFrequency) return strategy.action === 'fold' ? '' : `${strategy.frequency}`;
-  if (showEV) return strategy.action === 'fold' ? '' : `${strategy.ev}`;
+function cellOverlayText(strategy: HandStrategy, tab: MatrixTab): string {
+  if (tab === 'range') return ACTION_CODE[strategy.action];
+  if (tab === 'frequency') return strategy.action === 'fold' ? '' : `${strategy.frequency}`;
+  if (tab === 'ev') return strategy.action === 'fold' ? '' : `${strategy.ev}`;
   return '';
 }
 
 interface NlhGridProps {
   position: NlhPosition;
-  showAction: boolean;
-  showFrequency: boolean;
-  showEV: boolean;
+  activeTab: MatrixTab;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
 }
 
-function NlhGrid({ position, showAction, showFrequency, showEV, selectedId, onSelect }: NlhGridProps) {
+function NlhGrid({ position, activeTab, selectedId, onSelect }: NlhGridProps) {
   const rows = useMemo(() => {
     const grouped: NlhHand[][] = Array.from({ length: RANKS.length }, () => []);
     for (const hand of NLH_HANDS) grouped[hand.row].push(hand);
@@ -165,18 +237,15 @@ function NlhGrid({ position, showAction, showFrequency, showEV, selectedId, onSe
               </View>
               {row.map((hand) => {
                 const strategy = strategyFor(hand, position);
+                const visual = cellVisual(activeTab, strengthTier(hand), strategy);
                 return (
                   <Pressable
                     key={hand.id}
                     onPress={() => onSelect(hand.id)}
-                    style={[
-                      gridStyles.cell,
-                      { backgroundColor: strengthColor(hand) },
-                      selectedId === hand.id && gridStyles.cellSelected,
-                    ]}
+                    style={[gridStyles.cell, { backgroundColor: visual.bg }, selectedId === hand.id && gridStyles.cellSelected]}
                   >
-                    <Text style={gridStyles.cellText} numberOfLines={1}>
-                      {cellOverlayText(strategy, showAction, showFrequency, showEV) || hand.id}
+                    <Text style={[gridStyles.cellText, { color: visual.text }]} numberOfLines={1}>
+                      {cellOverlayText(strategy, activeTab) || hand.id}
                     </Text>
                   </Pressable>
                 );
@@ -201,14 +270,12 @@ function NlhGrid({ position, showAction, showFrequency, showEV, selectedId, onSe
 
 interface PloCategoryListProps {
   position: NlhPosition;
-  showAction: boolean;
-  showFrequency: boolean;
-  showEV: boolean;
+  activeTab: MatrixTab;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
 }
 
-function PloCategoryList({ position, showAction, showFrequency, showEV, selectedId, onSelect }: PloCategoryListProps) {
+function PloCategoryList({ position, activeTab, selectedId, onSelect }: PloCategoryListProps) {
   const selectedCategory = selectedId ? PLO_CATEGORIES.find((entry) => entry.id === selectedId) ?? null : null;
 
   return (
@@ -216,21 +283,22 @@ function PloCategoryList({ position, showAction, showFrequency, showEV, selected
       <View style={styles.ploList}>
         {PLO_CATEGORIES.map((category) => {
           const strategy = ploStrategyFor(category, position);
-          const overlay = cellOverlayText(strategy, showAction, showFrequency, showEV);
+          const overlay = cellOverlayText(strategy, activeTab);
+          const visual = cellVisual(activeTab, category.strength, strategy);
           return (
             <Pressable
               key={category.id}
               onPress={() => onSelect(category.id)}
               style={[styles.ploRow, selectedId === category.id && styles.ploRowSelected]}
             >
-              <View style={[styles.ploSwatch, { backgroundColor: ploStrengthColor(category) }]} />
+              <View style={[styles.ploSwatch, { backgroundColor: visual.bg }]} />
               <View style={styles.ploRowCopy}>
                 <Text style={styles.ploRowLabel}>{category.label}</Text>
                 <Text style={styles.ploRowExample}>{category.example}</Text>
               </View>
               {overlay ? (
-                <View style={styles.ploOverlayBadge}>
-                  <Text style={styles.ploOverlayText}>{overlay}</Text>
+                <View style={[styles.ploOverlayBadge, { backgroundColor: visual.bg }]}>
+                  <Text style={[styles.ploOverlayText, { color: visual.text }]}>{overlay}</Text>
                 </View>
               ) : null}
             </Pressable>
@@ -304,6 +372,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   collapsedTitle: { color: colors.text, fontSize: 14, fontWeight: '800' },
+  collapsedInsight: { color: colors.mint, fontSize: 10, fontWeight: '700', marginTop: 2 },
   chevron: { color: colors.gold, fontSize: 16, fontWeight: '900' },
   chevronDown: { transform: [{ rotate: '90deg' }] },
   container: {
@@ -328,23 +397,42 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surfaceRaised,
   },
-  positionChipActive: { borderColor: colors.gold, backgroundColor: 'rgba(241,196,110,0.16)' },
+  positionChipActive: { borderColor: colors.gold, backgroundColor: 'rgba(203,178,126,0.16)' },
   positionChipText: { color: colors.textMuted, fontSize: 12, fontWeight: '800' },
   positionChipTextActive: { color: colors.gold },
-  positionCaption: { color: colors.textFaint, fontSize: 10 },
-  toggleRow: { flexDirection: 'row', gap: 6 },
-  toggleChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+  // Pinned insight -- a single computed fact ("CO opens 27% here") rather than the old
+  // static "opening range if first to act" caption, and left visible regardless of tab.
+  insightPill: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(47,229,174,0.35)',
+    backgroundColor: 'rgba(47,229,174,0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  insightText: { color: colors.mint, fontSize: 10, fontWeight: '800' },
+  // Single-select tab row -- was three independent toggle checkboxes that could all be
+  // on (or off) at once, which doesn't match "the grid shows one value at a time."
+  tabRow: { flexDirection: 'row', gap: 4, borderBottomWidth: 1, borderBottomColor: colors.border },
+  tabChip: { flex: 1, paddingVertical: 7, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabChipActive: { borderBottomColor: colors.gold },
+  tabLabel: { color: colors.textMuted, fontSize: 11, fontWeight: '800' },
+  tabLabelActive: { color: colors.gold },
+  toggleCaption: { color: colors.textFaint, fontSize: 10, lineHeight: 14 },
+  notesWrap: { gap: 6 },
+  notesInput: {
+    minHeight: 72,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surfaceRaised,
+    color: colors.text,
+    fontSize: 12,
+    lineHeight: 17,
+    padding: 8,
+    textAlignVertical: 'top',
   },
-  toggleChipActive: { borderColor: colors.positive, backgroundColor: 'rgba(51,232,168,0.16)' },
-  toggleChipText: { color: colors.textMuted, fontSize: 11, fontWeight: '800' },
-  toggleChipTextActive: { color: colors.positive },
-  toggleCaption: { color: colors.textFaint, fontSize: 10, lineHeight: 14 },
   gridScroll: { flexGrow: 0 },
   ploList: { gap: 6 },
   ploRow: {
@@ -403,14 +491,16 @@ const gridStyles = StyleSheet.create({
   cornerCell: { width: 22, height: 22 },
   headerCell: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center' },
   headerText: { color: colors.textFaint, fontSize: 10, fontWeight: '900' },
+  // Tighter margin and a sharper corner than before -- a heatmap reads as a continuous
+  // surface, and visible gaps + rounded-pill cells were pulling it toward "buttons."
   cell: {
-    width: 26,
-    height: 26,
+    width: 24,
+    height: 24,
     margin: 0.5,
-    borderRadius: 3,
+    borderRadius: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cellSelected: { borderWidth: 2, borderColor: colors.gold },
-  cellText: { color: '#0B0A08', fontSize: 8, fontWeight: '900' },
+  cellSelected: { borderWidth: 1.5, borderColor: colors.gold },
+  cellText: { fontSize: 8, fontWeight: '900' },
 });
