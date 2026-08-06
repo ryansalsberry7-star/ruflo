@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
 import { ActionBar } from './components/ActionBar';
 import { HoleCards } from './components/HoleCards';
+import { StartingHandMatrix } from './components/StartingHandMatrix';
 import { BetChips, ChipPile, PotChips } from './components/Chips';
 import { DealerStage } from './components/live-dealer/DealerStage';
 import { useDealerController } from './components/live-dealer/dealerController';
@@ -782,6 +783,8 @@ export default function TableScreen() {
           </Pressable>
         </Link>
       </View>
+
+      <StartingHandMatrix variant={table?.variant ?? 'nlh'} />
       </ScrollView>
 
       {/* Pinned outside the ScrollView: a 20s turn timer leaves no room to scroll for Fold. */}
