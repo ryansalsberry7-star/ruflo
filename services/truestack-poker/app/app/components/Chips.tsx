@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 
 /**
  * Casino chip rendering.
@@ -176,28 +176,36 @@ interface PotChipsProps {
 export function PotChips({ amount, pushTo, pushKey = 0, size = 20, columns = 3, showLabel = false }: PotChipsProps) {
   const move = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const fade = useRef(new Animated.Value(1)).current;
+  // Drives a small upward bump layered on top of the straight-line sweep below --
+  // chips arcing toward the winner reads as a toss, a linear slide reads as a drag.
+  const arc = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!pushTo) {
       move.setValue({ x: 0, y: 0 });
       fade.setValue(1);
+      arc.setValue(0);
       return;
     }
 
     move.setValue({ x: 0, y: 0 });
     fade.setValue(1);
+    arc.setValue(0);
     Animated.parallel([
-      Animated.timing(move, { toValue: pushTo, duration: 620, useNativeDriver: false }),
+      Animated.timing(move, { toValue: pushTo, duration: 620, easing: Easing.out(Easing.quad), useNativeDriver: false }),
+      Animated.timing(arc, { toValue: 1, duration: 620, easing: Easing.out(Easing.quad), useNativeDriver: false }),
       Animated.timing(fade, { toValue: 0, duration: 620, delay: 160, useNativeDriver: false }),
     ]).start();
-  }, [pushTo, pushKey, move, fade]);
+  }, [pushTo, pushKey, move, fade, arc]);
 
   if (amount <= 0) return null;
+
+  const arcLift = arc.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, -16, 0] });
 
   return (
     <Animated.View
       pointerEvents="none"
-      style={{ opacity: fade, transform: [{ translateX: move.x }, { translateY: move.y }] }}
+      style={{ opacity: fade, transform: [{ translateX: move.x }, { translateY: move.y }, { translateY: arcLift }] }}
     >
       <ChipPile amount={amount} size={size} columns={columns} showLabel={showLabel} />
     </Animated.View>

@@ -1,7 +1,7 @@
 import { Link } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
+import { Animated, Easing, Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
 import { ActionBar } from './components/ActionBar';
 import { HoleCards } from './components/HoleCards';
 import { StartingHandMatrix } from './components/StartingHandMatrix';
@@ -88,12 +88,20 @@ function PlayingCard({ id, faceDown }: { id?: string; faceDown?: boolean }): JSX
 function DealtCard({ id, index }: { id: string; index: number }): JSX.Element {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(anim, { toValue: 1, duration: 260, delay: index * 70, useNativeDriver: false }).start();
+    // A slight overshoot-and-settle rather than a flat ease -- cards sliding in with
+    // some weight behind them reads as "dealt", not just faded/translated into place.
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 320,
+      delay: index * 70,
+      easing: Easing.out(Easing.back(1.4)),
+      useNativeDriver: false,
+    }).start();
   }, [anim, id, index]);
   return (
     <Animated.View
       style={{
-        opacity: anim,
+        opacity: anim.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
         transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [-16, 0] }) }],
       }}
     >
@@ -357,6 +365,22 @@ export default function TableScreen() {
   const reconnectTokenRef = useRef<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const manualCloseRef = useRef(false);
+  // Pot label gives a small confirming pulse whenever chips actually land in it, rather
+  // than just silently re-rendering a bigger number.
+  const potPulse = useRef(new Animated.Value(1)).current;
+  const prevPotRef = useRef(0);
+
+  useEffect(() => {
+    const pot = table?.pot ?? 0;
+    if (pot > prevPotRef.current) {
+      potPulse.setValue(1);
+      Animated.sequence([
+        Animated.timing(potPulse, { toValue: 1.12, duration: 120, easing: Easing.out(Easing.quad), useNativeDriver: false }),
+        Animated.spring(potPulse, { toValue: 1, friction: 5, tension: 120, useNativeDriver: false }),
+      ]).start();
+    }
+    prevPotRef.current = pot;
+  }, [table?.pot, potPulse]);
 
   const wsUrl = useMemo(() => `${resolveWebSocketBaseUrl()}/ws`, []);
   const { width: windowWidth } = useWindowDimensions();
@@ -820,11 +844,11 @@ export default function TableScreen() {
             </View>
 
             <View style={[feltStyles.board, { top: tableHeight * 0.44, width: tableWidth }]}>
-              <View style={feltStyles.potPill}>
+              <Animated.View style={[feltStyles.potPill, { transform: [{ scale: potPulse }] }]}>
                 <Text style={feltStyles.potLabel}>
                   Pot <Text style={feltStyles.potText}>${table?.pot.toFixed(2) ?? '0.00'}</Text>
                 </Text>
-              </View>
+              </Animated.View>
               {/* Real chips, sized by the pot, that sweep to the winner. Centered under
                   the label rather than sharing a row with it, so the pile itself sits in
                   the middle of the felt instead of hugging one side of the row. */}

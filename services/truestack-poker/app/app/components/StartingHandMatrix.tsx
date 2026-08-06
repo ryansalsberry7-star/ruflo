@@ -1,6 +1,12 @@
 import { memo, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { LayoutAnimation, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, UIManager, View } from 'react-native';
 import { colors, displayFontSemibold } from '../lib/theme';
+
+// Old Android architecture needs this opted in explicitly; iOS and the New Architecture
+// bridgeless renderer support LayoutAnimation without it.
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import type { GameVariant } from '../lib/betting';
 import {
   NLH_HANDS,
@@ -98,9 +104,17 @@ function StartingHandMatrixImpl({ variant, defaultExpanded = false }: StartingHa
   const openPercent = variant === 'plo' ? PLO_OPEN_PERCENT[position] : OPEN_PERCENT[position];
   const insight = `${position} opens ${Math.round(openPercent)}% here`;
 
+  // A dashboard panel collapses smoothly; an accordion FAQ just snaps. LayoutAnimation
+  // gets that for free from the built-in height/opacity change between the two return
+  // branches below, no extra animation library needed.
+  const toggleExpanded = (next: boolean) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpanded(next);
+  };
+
   if (!expanded) {
     return (
-      <Pressable style={styles.collapsedBar} onPress={() => setExpanded(true)}>
+      <Pressable style={styles.collapsedBar} onPress={() => toggleExpanded(true)}>
         <View>
           <Text style={styles.collapsedTitle}>Starting Hand Matrix</Text>
           {/* Pinned insight -- visible even collapsed, so it's not locked behind opening
@@ -116,7 +130,7 @@ function StartingHandMatrixImpl({ variant, defaultExpanded = false }: StartingHa
 
   return (
     <View style={styles.container}>
-      <Pressable style={styles.header} onPress={() => setExpanded(false)}>
+      <Pressable style={styles.header} onPress={() => toggleExpanded(false)}>
         <Text style={styles.headerTitle}>Starting Hand Matrix</Text>
         <Text style={[styles.chevron, styles.chevronDown]}>{'›'}</Text>
       </Pressable>
