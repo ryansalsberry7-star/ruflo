@@ -2,6 +2,7 @@ import { Link } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ActionBar } from './components/ActionBar';
 import { HoleCards } from './components/HoleCards';
 import { StartingHandMatrix } from './components/StartingHandMatrix';
@@ -405,6 +406,7 @@ export default function TableScreen() {
 
   const wsUrl = useMemo(() => `${resolveWebSocketBaseUrl()}/ws`, []);
   const { width: windowWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (!user || !authToken) return;
@@ -782,7 +784,7 @@ export default function TableScreen() {
 
   return (
     <View style={styles.root}>
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <ScrollView style={styles.screen} contentContainerStyle={[styles.content, { paddingTop: insets.top + 12 }]}>
       <View style={styles.headerRow}>
         <View style={styles.headerMain}>
           <Text style={styles.title}>Eirinn Poker Tables</Text>
@@ -1060,7 +1062,9 @@ const styles = StyleSheet.create({
   centered: { flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
   message: { color: colors.textMuted, fontSize: fontSize.xl, textAlign: 'center', lineHeight: 22 },
   screen: { flex: 1, backgroundColor: colors.bg },
-  content: { paddingHorizontal: 10, paddingTop: 32, paddingBottom: 16, gap: 14 },
+  // paddingTop is set inline from useSafeAreaInsets() -- a fixed guess here was what
+  // let the header sit under the status bar/Dynamic Island on some devices.
+  content: { paddingHorizontal: 10, paddingBottom: 16, gap: 14 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 8 },
   headerMain: { flex: 1, gap: 2 },
   headerStakes: { color: colors.textMuted, fontSize: fontSize.base, fontWeight: '600' },
