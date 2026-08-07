@@ -1,14 +1,14 @@
 export type SkillTier = 'beginner' | 'intermediate' | 'advanced' | 'pro';
 
 const PLAYER_CHARACTER_IDS = [
-  'river-fox',
-  'night-owl',
-  'gold-lion',
-  'neon-panther',
-  'storm-raven',
-  'ember-wolf',
-  'tide-koi',
-  'lucky-hare',
+  'royal-flush',
+  'aces-over',
+  'shark-mode',
+  'poker-phoenix',
+  'mind-reader',
+  'high-roller',
+  'luck-of-the-draw',
+  'diamond-hands',
 ] as const;
 
 function normalizePlayerCharacter(value: string | undefined, seed: string): string {

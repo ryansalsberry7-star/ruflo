@@ -11,10 +11,10 @@ const MIN_PASSWORD_LENGTH = 8;
 
 export default function RegistrationScreen() {
   const { register, loading, error } = useAuth();
-  const [username, setUsername] = useState('RiverFox');
+  const [username, setUsername] = useState('RoyalFlush');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [playerCharacter, setPlayerCharacter] = useState<PlayerCharacterId>('river-fox');
+  const [playerCharacter, setPlayerCharacter] = useState<PlayerCharacterId>('royal-flush');
   const activeCharacter = getPlayerCharacter(playerCharacter);
   const insets = useSafeAreaInsets();
 
@@ -58,7 +58,7 @@ export default function RegistrationScreen() {
 
       <View style={styles.card}>
         <Text style={styles.label}>Username</Text>
-        <TextInput value={username} onChangeText={setUsername} autoCapitalize="words" style={styles.input} placeholder="RiverFox" placeholderTextColor={colors.textFaint} />
+        <TextInput value={username} onChangeText={setUsername} autoCapitalize="words" style={styles.input} placeholder="RoyalFlush" placeholderTextColor={colors.textFaint} />
         <Text style={styles.hint}>A unique player ID is generated automatically, and you can change your character later from profile.</Text>
 
         <Text style={styles.label}>Password</Text>
