@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test *)",
+      "Bash(npx tsx *)",
+      "Bash(curl -s http://127.0.0.1:4040/api/hud-stats/grace)",
+      "Bash(curl -s http://127.0.0.1:4040/api/profiles/grace)",
+      "Bash(curl -s http://127.0.0.1:4040/api/hud-stats/Grace)",
+      "Bash(sips -Z 2000 -c 300 300 sim27.png --out crop_test.png)",
+      "Bash(python3 -c \"print\\('no PIL available, will crop via sips region instead'\\)\")",
+      "Bash(python3 -c \"import PIL\")",
+      "Bash(curl -s http://127.0.0.1:4040/api/tables/cash-aurora)",
+      "Bash(curl -s http://127.0.0.1:4040/api/cash-games)",
+      "Bash(curl -s \"http://127.0.0.1:4040/api/tables/cash-aurora/hand-history\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('hand count:', len\\(d.get\\('history',[]\\)\\)\\); print\\(json.dumps\\(d.get\\('history',[]\\)[-2:], indent=2\\)[:1500]\\)\")",
+      "Bash(curl -s http://127.0.0.1:4040/api/hud-stats/p1)",
+      "Bash(curl -s http://127.0.0.1:4040/api/hud-stats/p2)",
+      "Bash(curl -s http://127.0.0.1:4040/api/hud-stats/p3)",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -s \"http://127.0.0.1:4040/api/tables/cash-aurora/replay/cash-aurora-1786005033278-5508\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(open -a Simulator)",
+      "Bash(curl -s -o /dev/null -w \"backend: %{http_code}\\\\n\" --max-time 3 http://127.0.0.1:4040/)",
+      "Bash(curl -s -o /dev/null -w \"metro: %{http_code}\\\\n\" --max-time 3 http://localhost:8081/status)",
+      "Bash(pkill -f \"tsx watch src/server.ts\")",
+      "Bash(TRUESTACK_DEV_BOTS=true npm run dev)",
+      "Bash(curl -s http://127.0.0.1:4040/api/hud-stats/bot-nova)",
+      "Bash(curl -s http://127.0.0.1:4040/api/profiles/bot-nova)"
+    ],
+    "additionalDirectories": [
+      "/Users/ryansalsberry/ruflo/services/truestack-poker/src/services",
+      "/Users/ryansalsberry/ruflo/services/truestack-poker/src",
+      "/Users/ryansalsberry/ruflo/services/truestack-poker/tests"
+    ]
+  }
+}
