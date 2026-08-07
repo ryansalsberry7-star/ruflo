@@ -671,12 +671,14 @@ async function routeRequest(
     return;
   }
 
-  // VPIP/PFR opponent-read for the table HUD. Null until the player has a big enough
-  // sample this session -- see PlayerStatsService's MIN_SAMPLE_HANDS.
+  // VPIP/PFR opponent-read for the table HUD (null until a big enough sample this
+  // session -- see PlayerStatsService's MIN_SAMPLE_HANDS) plus hands/win-streak
+  // progress for the Hero Card, which is meaningful from the very first hand.
   if (method === 'GET' && pathname.startsWith('/api/hud-stats/') && pathname.split('/').length === 4) {
     const userId = pathname.split('/')[3] ?? '';
     const stats = services.poker.getPlayerHudStats(userId);
-    sendJson(res, 200, { stats });
+    const progress = services.poker.getPlayerProgress(userId);
+    sendJson(res, 200, { stats, progress });
     return;
   }
 

@@ -8,6 +8,7 @@ import { HoleCards } from '../components/HoleCards';
 import { StartingHandMatrix } from '../components/StartingHandMatrix';
 import { BetChips, PotChips } from '../components/Chips';
 import { TimerRing } from '../components/TimerRing';
+import { HeroCardDetail } from '../components/HeroCardDetail';
 import { DealerStage } from '../components/live-dealer/DealerStage';
 import { useDealerController } from '../components/live-dealer/dealerController';
 import { useAuth } from '../lib/auth';
@@ -19,6 +20,7 @@ import type { DeckColorMode } from '../lib/theme';
 import { formatChips, getLegalActions } from '../lib/betting';
 import type { ActionKind, GameVariant, TablePlayer, TableState } from '../lib/betting';
 import { estimateWinOdds } from '../lib/winOdds';
+import { computeHeroCardStats, levelFromHands, rarityForLevel } from '../lib/heroCard';
 
 interface TableEventEnvelope {
   event: string;
@@ -42,6 +44,15 @@ interface PlayerHudStats {
   hands: number;
   vpip: number;
   pfr: number;
+}
+
+/** Always available (unlike PlayerHudStats) -- backs the Hero Card's level/rarity and
+ *  win/cold streak. Same /api/hud-stats/:id response, its `progress` field. */
+interface PlayerProgress {
+  hands: number;
+  winStreak: number;
+  bestWinStreak: number;
+  coldStreak: number;
 }
 
 const TABLE_ID = 'cash-aurora';
@@ -192,6 +203,13 @@ interface SeatPodProps {
   /** Opponent VPIP/PFR read. Null for the hero (nothing to read about yourself
    *  mid-hand) and for anyone without a meaningful sample yet this session. */
   hudStats?: PlayerHudStats | null;
+  /** Same VPIP/PFR read, but available for every seat including the hero -- feeds the
+   *  Hero Card's Aggression/Discipline stats, which are a profile trait, not a live tell. */
+  cardHudStats?: PlayerHudStats | null;
+  /** Hands played and win/cold streak, for level/rarity and the card's footer. */
+  progress?: PlayerProgress | null;
+  /** Opens the full Hero Card detail modal for this seat. */
+  onOpenCard?: () => void;
 }
 
 function SeatPod({
@@ -211,6 +229,9 @@ function SeatPod({
   isWinner,
   turnCountdown,
   hudStats,
+  cardHudStats,
+  progress,
+  onOpenCard,
 }: SeatPodProps): JSX.Element {
   // A fold should read as a decision, not a glitch -- cards slide away instead of
   // vanishing the instant `folded` flips true. HoleCards keeps rendering (still
@@ -255,12 +276,33 @@ function SeatPod({
   }
   // "Active" is the default/uninteresting state for most seats most of the time, so it's
   // omitted entirely rather than costing every seat a line of height for no information.
-  const status = player.folded ? 'Folded' : player.allIn ? 'All-in' : isTurn ? 'Acting\u2026' : null;
+  const status =
+    player.stack <= 0 && !player.allIn
+      ? 'Busted'
+      : player.folded
+        ? 'Folded'
+        : player.allIn
+          ? 'All-in'
+          : isTurn
+            ? 'Acting\u2026'
+            : null;
   // VPIP/PFR shares the status line rather than adding a row of its own -- this pod has
   // fought height-crowding bugs before. A live status always wins when there is one;
   // the read is only worth showing in the dead space where nothing else is happening.
   const hudLabel = hudStats ? `${hudStats.vpip}/${hudStats.pfr}` : null;
   const character = getPlayerCharacter(resolveCharacterId(characterId, player.name));
+
+  // Hero Card progression: level/rarity from hands played this session, plus the two
+  // states that make the card feel alive -- busted (stack empty) and on tilt (a run of
+  // losses), independent of whatever else is happening with the current hand.
+  const level = levelFromHands(progress?.hands ?? 0);
+  const rarity = rarityForLevel(level);
+  const heroCardStats = computeHeroCardStats(player.id, cardHudStats ?? null);
+  // Not just stack <= 0 -- a player mid-all-in also has an empty stack (every chip is
+  // in the pot) but hasn't busted, they might win it back. Busted means empty-handed
+  // with no live pot that could still refill the stack.
+  const isBust = player.stack <= 0 && !player.allIn;
+  const isTilt = (progress?.coldStreak ?? 0) >= 3;
   return (
     <View style={[seatStyles.pod, { width: podWidth }]}>
       {isTurn ? <PulseRing /> : null}
@@ -287,7 +329,17 @@ function SeatPod({
           <Text style={seatStyles.lastActionText}>{lastAction}</Text>
         </View>
       ) : null}
-      <View style={[seatStyles.plate, { width: podWidth }, isHero && seatStyles.heroPlate, isTurn && seatStyles.turnPlate]}>
+      <Pressable
+        onPress={onOpenCard}
+        style={[
+          seatStyles.plate,
+          { width: podWidth, borderColor: rarity.color },
+          isHero && seatStyles.heroPlate,
+          isTurn && seatStyles.turnPlate,
+          isBust && seatStyles.bustPlate,
+          isTilt && seatStyles.tiltPlate,
+        ]}
+      >
         <View style={seatStyles.avatarWrap}>
           {/* Burns down over the seat's turn -- same footprint as the avatar ring itself
               (no extra layout weight for the other 8 seats that aren't acting), traced
@@ -321,6 +373,11 @@ function SeatPod({
                 <Text style={seatStyles.trustShieldText}>H</Text>
               </View>
             ) : null}
+            {/* Hero Card level -- the one open corner of the avatar ring (win odds/trust
+                shield/position badge already claim the other three). */}
+            <View style={[seatStyles.levelBadge, { borderColor: rarity.color }]}>
+              <Text style={[seatStyles.levelBadgeText, numericFont]}>{level}</Text>
+            </View>
             {/* One badge slot for whichever position matters this hand -- dealer button
                 takes priority (it's the physical object a table actually has); small/big
                 blind fall back to a compact text badge in the same corner. */}
@@ -354,7 +411,7 @@ function SeatPod({
         ) : hudLabel ? (
           <Text style={[seatStyles.hudLabel, numericFont]}>{hudLabel}</Text>
         ) : null}
-      </View>
+      </Pressable>
     </View>
   );
 }
@@ -384,6 +441,10 @@ export default function TableScreen() {
   const [playerProfiles, setPlayerProfiles] = useState<Record<string, PlayerIdentityProfile>>({});
   const [playerTrust, setPlayerTrust] = useState<Record<string, PlayerTrustSummary>>({});
   const [playerHudStats, setPlayerHudStats] = useState<Record<string, PlayerHudStats>>({});
+  const [playerProgress, setPlayerProgress] = useState<Record<string, PlayerProgress>>({});
+  // Which seat's full Hero Card is open, if any -- one modal instance for all nine
+  // seats rather than nine dormant Modal components.
+  const [openCardPlayerId, setOpenCardPlayerId] = useState<string | null>(null);
   const reconnectTokenRef = useRef<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const manualCloseRef = useRef(false);
@@ -530,9 +591,9 @@ export default function TableScreen() {
             const [profileResponse, trustResponse, hudResponse] = await Promise.all([
               getJson<{ profile: PlayerIdentityProfile }>(`/api/profiles/${playerId}`),
               getJson<{ trust: PlayerTrustSummary }>(`/api/trust/${playerId}`),
-              getJson<{ stats: PlayerHudStats | null }>(`/api/hud-stats/${playerId}`),
+              getJson<{ stats: PlayerHudStats | null; progress: PlayerProgress }>(`/api/hud-stats/${playerId}`),
             ]);
-            return [playerId, profileResponse.profile, trustResponse.trust, hudResponse.stats] as const;
+            return [playerId, profileResponse.profile, trustResponse.trust, hudResponse.stats, hudResponse.progress] as const;
           })
         );
 
@@ -541,16 +602,19 @@ export default function TableScreen() {
         const nextProfiles: Record<string, PlayerIdentityProfile> = {};
         const nextTrust: Record<string, PlayerTrustSummary> = {};
         const nextHudStats: Record<string, PlayerHudStats> = {};
+        const nextProgress: Record<string, PlayerProgress> = {};
 
-        for (const [playerId, profile, trust, hudStats] of entries) {
+        for (const [playerId, profile, trust, hudStats, progress] of entries) {
           nextProfiles[playerId] = profile;
           nextTrust[playerId] = trust;
           if (hudStats) nextHudStats[playerId] = hudStats;
+          nextProgress[playerId] = progress;
         }
 
         setPlayerProfiles(nextProfiles);
         setPlayerTrust(nextTrust);
         setPlayerHudStats(nextHudStats);
+        setPlayerProgress(nextProgress);
       } catch {
         if (!active) return;
       }
@@ -782,6 +846,16 @@ export default function TableScreen() {
       y: slot.y * tableHeight,
     }));
 
+  // The one Hero Card detail modal for all nine seats, computed only when one is open.
+  const openCardPlayer = table?.players.find((entry) => entry.id === openCardPlayerId) ?? null;
+  const openCardCharacter = openCardPlayer
+    ? getPlayerCharacter(resolveCharacterId(playerProfiles[openCardPlayer.id]?.customization.playerCharacter, openCardPlayer.name))
+    : null;
+  const openCardProgress = openCardPlayer ? playerProgress[openCardPlayer.id] ?? null : null;
+  const openCardLevel = levelFromHands(openCardProgress?.hands ?? 0);
+  const openCardRarity = rarityForLevel(openCardLevel);
+  const openCardStats = openCardPlayer ? computeHeroCardStats(openCardPlayer.id, playerHudStats[openCardPlayer.id] ?? null) : null;
+
   return (
     <View style={styles.root}>
       <ScrollView style={styles.screen} contentContainerStyle={[styles.content, { paddingTop: insets.top + 12 }]}>
@@ -962,6 +1036,9 @@ export default function TableScreen() {
                   isWinner={!!player && player.id === lastWinnerId}
                   turnCountdown={table?.currentTurn === player?.id ? countdown : null}
                   hudStats={player && !isHero ? playerHudStats[player.id] ?? null : null}
+                  cardHudStats={player ? playerHudStats[player.id] ?? null : null}
+                  progress={player ? playerProgress[player.id] ?? null : null}
+                  onOpenCard={player ? () => setOpenCardPlayerId(player.id) : undefined}
                 />
               </View>
             ))}
@@ -1053,6 +1130,20 @@ export default function TableScreen() {
         turnActionSeconds={TURN_ACTION_SECONDS}
         onAction={sendAction}
       />
+
+      {openCardPlayer && openCardCharacter && openCardStats ? (
+        <HeroCardDetail
+          visible
+          onClose={() => setOpenCardPlayerId(null)}
+          character={openCardCharacter}
+          displayName={openCardPlayer.id === user.userId ? 'You' : openCardPlayer.name}
+          rarity={openCardRarity}
+          level={openCardLevel}
+          stats={openCardStats}
+          winStreak={openCardProgress?.winStreak ?? 0}
+          isBot={openCardPlayer.isBot}
+        />
+      ) : null}
     </View>
   );
 }
@@ -1425,6 +1516,22 @@ const seatStyles = StyleSheet.create({
     shadowOpacity: 0.45,
     shadowRadius: 6,
   },
+  // Busted: empty-handed with no live pot that could refill the stack -- dulled and
+  // desaturated rather than a literal crack graphic, which needs real art to not look
+  // like a bug. Reads as "this card is spent" at a glance.
+  bustPlate: {
+    borderColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: 'rgba(10,12,16,0.55)',
+    opacity: 0.55,
+  },
+  // On tilt (a run of losses): a static hot-coral tint on the frame, not an animated
+  // pulse -- reserve motion for the turn/win states so this doesn't compete with them.
+  tiltPlate: {
+    borderColor: colors.danger,
+    shadowColor: colors.danger,
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+  },
   emptyPlate: {
     backgroundColor: 'rgba(10,12,16,0.55)',
     borderStyle: 'dashed',
@@ -1495,6 +1602,22 @@ const seatStyles = StyleSheet.create({
     borderColor: colors.ink,
   },
   dealerButtonText: { color: colors.ink, fontSize: fontSize.xxs, fontWeight: '900', lineHeight: 9 },
+  // Hero Card level -- bottom-left corner of the avatar ring, the one badge slot the
+  // other three (win odds, trust shield, position) don't already claim.
+  levelBadge: {
+    position: 'absolute',
+    left: -4,
+    bottom: -4,
+    minWidth: 12,
+    height: 12,
+    borderRadius: 6,
+    paddingHorizontal: 2,
+    backgroundColor: colors.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  levelBadgeText: { color: colors.text, fontSize: fontSize.xxs, fontWeight: '900', lineHeight: 9 },
   pulseRing: { position: 'absolute', top: 8, left: 1, right: 1, bottom: 16, borderRadius: 36, borderWidth: 2, borderColor: colors.gold },
   nameTag: {
     borderRadius: 6,

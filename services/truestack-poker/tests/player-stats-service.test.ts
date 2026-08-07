@@ -57,6 +57,53 @@ test('an all-in preflop counts toward VPIP but not PFR (call vs. raise is ambigu
   assert.equal(result?.pfr, 0);
 });
 
+test('progress (hands/win streak) is available from the very first hand, unlike getStats', () => {
+  const stats = new PlayerStatsService();
+  stats.recordHandDealt('t1', 'p1');
+  stats.recordHandResult(['p1', 'p2'], ['p1']);
+
+  assert.equal(stats.getStats('p1'), null); // still hidden -- sample too small
+  assert.deepEqual(stats.getProgress('p1'), { hands: 1, winStreak: 1, bestWinStreak: 1, coldStreak: 0 });
+});
+
+test('a loss builds a cold streak; a win clears it', () => {
+  const stats = new PlayerStatsService();
+  stats.recordHandDealt('t1', 'p1');
+  stats.recordHandResult(['p1', 'p2'], ['p2']);
+  stats.recordHandResult(['p1', 'p2'], ['p2']);
+  assert.equal(stats.getProgress('p1').coldStreak, 2);
+
+  stats.recordHandResult(['p1', 'p2'], ['p1']);
+  assert.equal(stats.getProgress('p1').coldStreak, 0);
+  assert.equal(stats.getProgress('p1').winStreak, 1);
+});
+
+test('a loss resets the win streak; a fresh win starts a new one', () => {
+  const stats = new PlayerStatsService();
+  for (let i = 0; i < 3; i += 1) stats.recordHandDealt('t1', 'p1');
+  stats.recordHandResult(['p1', 'p2'], ['p1']);
+  stats.recordHandResult(['p1', 'p2'], ['p1']);
+  stats.recordHandResult(['p1', 'p2'], ['p2']); // p1 loses
+  stats.recordHandResult(['p1', 'p2'], ['p1']);
+
+  assert.deepEqual(stats.getProgress('p1'), { hands: 3, winStreak: 1, bestWinStreak: 2, coldStreak: 0 });
+});
+
+test('a split pot counts every listed winner, not just the first', () => {
+  const stats = new PlayerStatsService();
+  stats.recordHandDealt('t1', 'p1');
+  stats.recordHandDealt('t1', 'p2');
+  stats.recordHandResult(['p1', 'p2'], ['p1', 'p2']);
+
+  assert.equal(stats.getProgress('p1').winStreak, 1);
+  assert.equal(stats.getProgress('p2').winStreak, 1);
+});
+
+test('a player never dealt in has zero progress rather than throwing', () => {
+  const stats = new PlayerStatsService();
+  assert.deepEqual(stats.getProgress('ghost'), { hands: 0, winStreak: 0, bestWinStreak: 0, coldStreak: 0 });
+});
+
 test('per-hand dedup is scoped per table, not global', () => {
   const stats = new PlayerStatsService();
   for (let i = 0; i < 5; i += 1) {

@@ -21,7 +21,7 @@ import { GAME_VARIANT_LABELS, HOLE_CARD_COUNT, STAKE_LEVELS, TOURNAMENT_LISTINGS
 import { DealerService, type DealerHandState, type HandVerificationRecord } from './dealer-service.js';
 import type { GameHostProvider } from './game-host-provider.js';
 import { HighHandService } from './high-hand-service.js';
-import { PlayerStatsService, type PlayerHudStats } from './player-stats-service.js';
+import { PlayerStatsService, type PlayerHudStats, type PlayerProgress } from './player-stats-service.js';
 import type { WalletService } from './wallet-service.js';
 
 export interface SettledPayout {
@@ -419,6 +419,7 @@ export class PokerService extends EventEmitter implements GameHostProvider {
     // seat kept paying blinds, draining every stack toward zero over a session. The wallet
     // moves only on buy-in and cash-out (see cashOutPlayer).
     this.creditPayoutsToStacks(tableId, payouts);
+    this.playerStats.recordHandResult(Object.keys(hand.holeCardsByPlayer), winners);
 
     this.resetTableForNextHand(tableId);
     this.startDealerHandForTable(tableId);
@@ -567,6 +568,11 @@ export class PokerService extends EventEmitter implements GameHostProvider {
   /** VPIP/PFR HUD read for a player, or null until there's a meaningful sample. */
   getPlayerHudStats(playerId: string): PlayerHudStats | null {
     return this.playerStats.getStats(playerId);
+  }
+
+  /** Hands played and current/best win streak -- always available, unlike getPlayerHudStats. */
+  getPlayerProgress(playerId: string): PlayerProgress {
+    return this.playerStats.getProgress(playerId);
   }
 
   /** Pays settled pots back into the winners' seats. Run before the next hand's blinds are posted. */

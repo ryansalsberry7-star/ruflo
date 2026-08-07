@@ -1,7 +1,7 @@
 import type { ActionType, Card, TableState } from '../poker-engine.js';
 import type { GameVariant, StakeLevel, TournamentListing, ZeroRakePolicy } from '../contracts.js';
 import type { HandVerificationRecord } from './dealer-service.js';
-import type { PlayerHudStats } from './player-stats-service.js';
+import type { PlayerHudStats, PlayerProgress } from './player-stats-service.js';
 import type { FeaturedTable, SettledHand, TableListing, TournamentRegistration } from './poker-service.js';
 
 /**
@@ -43,6 +43,8 @@ export interface GameHostProvider {
   getHoleCardsFor(tableId: string, playerId: string): Card[];
   /** VPIP/PFR HUD read for a player, or null until there's a meaningful sample. */
   getPlayerHudStats(playerId: string): PlayerHudStats | null;
+  /** Hands played and current/best win streak -- always available, unlike getPlayerHudStats. */
+  getPlayerProgress(playerId: string): PlayerProgress;
 
   getHandHistory(tableId: string): SettledHand[];
   getHandVerification(handId: string): HandVerificationRecord;

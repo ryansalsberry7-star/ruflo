@@ -6,6 +6,23 @@ export interface PlayerHudStats {
   pfr: number;
 }
 
+/** Always available, unlike PlayerHudStats -- a win streak of 1 is meaningful the
+ *  moment it happens, unlike a VPIP percentage from a one-hand sample. */
+export interface PlayerProgress {
+  hands: number;
+  winStreak: number;
+  bestWinStreak: number;
+  /** Consecutive hands played without a win -- a "tilt" signal for the UI. Resets to 0
+   *  the moment a win streak starts, symmetric with winStreak resetting on a loss. */
+  coldStreak: number;
+}
+
+interface StreakEntry {
+  winStreak: number;
+  bestWinStreak: number;
+  coldStreak: number;
+}
+
 const MIN_SAMPLE_HANDS = 5;
 
 /**
@@ -25,12 +42,21 @@ export class PlayerStatsService {
   private readonly stats = new Map<string, PlayerHudStats>();
   private readonly vpipCountedThisHand = new Map<string, Set<string>>();
   private readonly pfrCountedThisHand = new Map<string, Set<string>>();
+  private readonly streaks = new Map<string, StreakEntry>();
 
   private getOrInit(playerId: string): PlayerHudStats {
     const existing = this.stats.get(playerId);
     if (existing) return existing;
     const fresh: PlayerHudStats = { hands: 0, vpip: 0, pfr: 0 };
     this.stats.set(playerId, fresh);
+    return fresh;
+  }
+
+  private getOrInitStreak(playerId: string): StreakEntry {
+    const existing = this.streaks.get(playerId);
+    if (existing) return existing;
+    const fresh: StreakEntry = { winStreak: 0, bestWinStreak: 0, coldStreak: 0 };
+    this.streaks.set(playerId, fresh);
     return fresh;
   }
 
@@ -72,5 +98,35 @@ export class PlayerStatsService {
     const entry = this.stats.get(playerId);
     if (!entry || entry.hands < MIN_SAMPLE_HANDS) return null;
     return { ...entry };
+  }
+
+  /** Call once per settled hand with everyone who was dealt in and who won. A winner's
+   *  streak extends; everyone else who played (won or not) has theirs reset to 0 --
+   *  a player who wasn't in the hand at all (never seated) is left untouched. */
+  recordHandResult(participantIds: string[], winnerIds: string[]): void {
+    const winners = new Set(winnerIds);
+    for (const playerId of participantIds) {
+      const entry = this.getOrInitStreak(playerId);
+      if (winners.has(playerId)) {
+        entry.winStreak += 1;
+        entry.bestWinStreak = Math.max(entry.bestWinStreak, entry.winStreak);
+        entry.coldStreak = 0;
+      } else {
+        entry.winStreak = 0;
+        entry.coldStreak += 1;
+      }
+    }
+  }
+
+  /** Always available (unlike getStats) -- hands and win streak are meaningful from
+   *  the very first hand, unlike a percentage that needs a real sample. */
+  getProgress(playerId: string): PlayerProgress {
+    const streak = this.streaks.get(playerId);
+    return {
+      hands: this.stats.get(playerId)?.hands ?? 0,
+      winStreak: streak?.winStreak ?? 0,
+      bestWinStreak: streak?.bestWinStreak ?? 0,
+      coldStreak: streak?.coldStreak ?? 0,
+    };
   }
 }
