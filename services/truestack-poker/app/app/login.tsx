@@ -1,7 +1,9 @@
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { CelticKnot } from '../components/CelticKnot';
 import { useAuth } from '../lib/auth';
+import { colors, displayFont, fontSize } from '../lib/theme';
 
 export default function LoginScreen() {
   const { login, loading, error } = useAuth();
@@ -21,7 +23,10 @@ export default function LoginScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Text style={styles.eyebrow}>ACCOUNT</Text>
+        <View style={styles.eyebrowRow}>
+          <CelticKnot size={16} color={colors.mint} opacity={0.85} />
+          <Text style={styles.eyebrow}>ACCOUNT</Text>
+        </View>
         <Text style={styles.title}>Sign in</Text>
         <Text style={styles.description}>Resume your session with your table identity.</Text>
       </View>
@@ -36,7 +41,7 @@ export default function LoginScreen() {
           autoFocus
           style={styles.input}
           placeholder="Enter your username"
-          placeholderTextColor="#6D5750"
+          placeholderTextColor={colors.textFaint}
         />
         <Text style={styles.label}>Password</Text>
         <TextInput
@@ -47,7 +52,7 @@ export default function LoginScreen() {
           secureTextEntry
           style={styles.input}
           placeholder="Enter your password"
-          placeholderTextColor="#6D5750"
+          placeholderTextColor={colors.textFaint}
           onSubmitEditing={() => void handleLogin()}
         />
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -73,48 +78,49 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#17090D', padding: 24, justifyContent: 'center', gap: 20 },
+  screen: { flex: 1, backgroundColor: colors.bg, padding: 24, justifyContent: 'center', gap: 20 },
   header: { gap: 6, marginBottom: 4 },
-  eyebrow: { color: '#F1C46E', fontSize: 12, fontWeight: '800', letterSpacing: 2 },
-  title: { color: '#FFF4E7', fontSize: 30, fontWeight: '900' },
-  description: { color: '#B99D93', fontSize: 14, lineHeight: 20 },
+  eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  eyebrow: { color: colors.gold, fontSize: fontSize.md, fontWeight: '800', letterSpacing: 2 },
+  title: { color: colors.text, fontSize: fontSize.display, fontWeight: '900', ...displayFont },
+  description: { color: colors.textMuted, fontSize: fontSize.xl, lineHeight: 20 },
   card: {
-    backgroundColor: '#221017',
+    backgroundColor: colors.surface,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#4B2630',
+    borderColor: colors.border,
     padding: 18,
     gap: 12,
   },
-  label: { color: '#FFF4E7', fontSize: 13, fontWeight: '800' },
+  label: { color: colors.text, fontSize: fontSize.lg, fontWeight: '800' },
   input: {
-    backgroundColor: '#17090D',
+    backgroundColor: colors.bg,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#4B2630',
-    color: '#FFF4E7',
-    fontSize: 15,
+    borderColor: colors.border,
+    color: colors.text,
+    fontSize: fontSize.xl,
     paddingHorizontal: 14,
     paddingVertical: 13,
   },
-  error: { color: '#FFB4B4', fontSize: 12, lineHeight: 18 },
+  error: { color: colors.danger, fontSize: fontSize.base, lineHeight: 18 },
   button: {
-    backgroundColor: '#F1C46E',
+    backgroundColor: colors.gold,
     borderRadius: 14,
     alignItems: 'center',
     paddingVertical: 15,
     marginTop: 2,
   },
   buttonDisabled: {
-    backgroundColor: '#F1C46E',
+    backgroundColor: colors.gold,
     borderRadius: 14,
     alignItems: 'center',
     paddingVertical: 15,
     marginTop: 2,
     opacity: 0.5,
   },
-  buttonText: { color: '#2A1118', fontSize: 15, fontWeight: '900' },
+  buttonText: { color: colors.ink, fontSize: fontSize.xl, fontWeight: '900' },
   footer: { flexDirection: 'row', gap: 6, justifyContent: 'center' },
-  footerText: { color: '#8C7069', fontSize: 13 },
-  footerLink: { color: '#F1C46E', fontSize: 13, fontWeight: '800' },
+  footerText: { color: colors.textMuted, fontSize: fontSize.lg },
+  footerLink: { color: colors.gold, fontSize: fontSize.lg, fontWeight: '800' },
 });

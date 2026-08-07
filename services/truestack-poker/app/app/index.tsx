@@ -1,10 +1,13 @@
 import { Link } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { CelticKnot } from '../components/CelticKnot';
 import { VerifiedHumanBadge } from '../components/VerifiedHumanBadge';
 import { useAuth } from '../lib/auth';
 import { getJson } from '../lib/api';
 import { getPlayerCharacter } from '../lib/playerIdentity';
+import { colors, displayFont, fontSize } from '../lib/theme';
 
 interface HighHandEntry {
   playerName: string;
@@ -29,6 +32,7 @@ export default function HomeScreen() {
   const { user, loading, logout } = useAuth();
   const [dailyLeader, setDailyLeader] = useState<HighHandEntry | null>(null);
   const activeCharacter = getPlayerCharacter(user?.playerCharacter);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     let active = true;
@@ -50,10 +54,13 @@ export default function HomeScreen() {
   }, []);
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.screen} contentContainerStyle={[styles.content, { paddingTop: insets.top + 12 }]}>
       <View style={styles.hero}>
+        <View style={styles.heroTitleRow}>
+          <CelticKnot size={26} color={colors.mint} opacity={0.85} />
+          <Text style={styles.title}>EIRINN POKER</Text>
+        </View>
         <Text style={styles.eyebrow}>ZERO-RAKE POKER</Text>
-        <Text style={styles.title}>EIRINN POKER</Text>
         <Text style={styles.subtitle}>No house edge. No cut of the pot. NLH & PLO.</Text>
       </View>
 
@@ -134,7 +141,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    backgroundColor: '#17090D',
+    backgroundColor: colors.bg,
   },
   content: {
     paddingHorizontal: 24,
@@ -143,29 +150,31 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   hero: { gap: 6, marginBottom: 4 },
+  heroTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   eyebrow: {
-    color: '#F1C46E',
-    fontSize: 12,
+    color: colors.gold,
+    fontSize: fontSize.md,
     letterSpacing: 2,
     fontWeight: '800',
   },
   title: {
-    color: '#FFF4E7',
+    color: colors.text,
     fontSize: 36,
     fontWeight: '900',
     letterSpacing: 0.5,
+    ...displayFont,
   },
   subtitle: {
-    color: '#B99D93',
-    fontSize: 14,
+    color: colors.textMuted,
+    fontSize: fontSize.xl,
     lineHeight: 20,
   },
   accountCard: {
-    backgroundColor: '#221017',
+    backgroundColor: colors.surface,
     borderRadius: 20,
     padding: 18,
     borderWidth: 1,
-    borderColor: '#4B2630',
+    borderColor: colors.border,
     gap: 14,
   },
   accountRow: { flexDirection: 'row', gap: 12, alignItems: 'center' },
@@ -178,22 +187,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarIdle: {
-    backgroundColor: '#3C1D26',
-    borderColor: '#7A4A53',
+    backgroundColor: colors.surfaceRaised,
+    borderColor: colors.border,
   },
-  avatarEmoji: { color: '#FFF4E7', fontSize: 24 },
+  avatarEmoji: { color: colors.text, fontSize: 24 },
   accountInfo: { flex: 1, gap: 2 },
-  accountName: { color: '#FFF4E7', fontSize: 17, fontWeight: '800' },
-  accountMeta: { color: '#B99D93', fontSize: 13 },
+  accountName: { color: colors.text, fontSize: fontSize.xxl, fontWeight: '800' },
+  accountMeta: { color: colors.textMuted, fontSize: fontSize.lg },
   primaryButton: {
-    backgroundColor: '#F1C46E',
+    backgroundColor: colors.gold,
     borderRadius: 14,
     alignItems: 'center',
     paddingVertical: 16,
   },
   primaryText: {
-    color: '#2A1118',
-    fontSize: 16,
+    color: colors.ink,
+    fontSize: fontSize.xxl,
     fontWeight: '900',
   },
   row: {
@@ -202,25 +211,25 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     flex: 1,
-    borderColor: '#4B2630',
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 14,
     alignItems: 'center',
     paddingVertical: 13,
-    backgroundColor: '#221017',
+    backgroundColor: colors.surface,
   },
   secondaryText: {
-    color: '#FFF4E7',
-    fontSize: 14,
+    color: colors.text,
+    fontSize: fontSize.xl,
     fontWeight: '700',
   },
   textButton: { alignSelf: 'flex-start' },
-  textButtonLabel: { color: '#D89A8E', fontSize: 13, fontWeight: '700' },
+  textButtonLabel: { color: colors.danger, fontSize: fontSize.lg, fontWeight: '700' },
   linkCard: {
-    backgroundColor: '#221017',
+    backgroundColor: colors.surface,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#4B2630',
+    borderColor: colors.border,
     overflow: 'hidden',
   },
   linkRow: {
@@ -230,7 +239,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#341A21',
+    borderBottomColor: colors.borderSubtle,
   },
   linkRowLastMerged: {
     flexDirection: 'row',
@@ -240,12 +249,12 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     borderBottomWidth: 0,
   },
-  linkLabel: { color: '#FFF4E7', fontSize: 15, fontWeight: '700' },
-  linkCaption: { color: '#8C7069', fontSize: 12, marginTop: 2 },
-  linkChevron: { color: '#7A4A53', fontSize: 20, fontWeight: '700' },
+  linkLabel: { color: colors.text, fontSize: fontSize.xxl, fontWeight: '700' },
+  linkCaption: { color: colors.textFaint, fontSize: fontSize.base, marginTop: 2 },
+  linkChevron: { color: colors.textFaint, fontSize: 20, fontWeight: '700' },
   footerText: {
-    color: '#7A5F58',
-    fontSize: 11,
+    color: colors.textFaint,
+    fontSize: fontSize.md,
     textAlign: 'center',
     marginTop: 2,
   },

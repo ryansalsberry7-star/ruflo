@@ -1,8 +1,11 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { CelticKnot } from '../components/CelticKnot';
 import { PLAYER_CHARACTERS, getPlayerCharacter, type PlayerCharacterId } from '../lib/playerIdentity';
 import { useAuth } from '../lib/auth';
+import { colors, displayFont, fontSize } from '../lib/theme';
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -13,6 +16,7 @@ export default function RegistrationScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [playerCharacter, setPlayerCharacter] = useState<PlayerCharacterId>('river-fox');
   const activeCharacter = getPlayerCharacter(playerCharacter);
+  const insets = useSafeAreaInsets();
 
   const passwordTooShort = password.length > 0 && password.length < MIN_PASSWORD_LENGTH;
   const passwordsMismatch = confirmPassword.length > 0 && password !== confirmPassword;
@@ -32,9 +36,12 @@ export default function RegistrationScreen() {
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.screen} contentContainerStyle={[styles.content, { paddingTop: insets.top + 12 }]}>
       <View style={styles.heroCard}>
-        <Text style={styles.eyebrow}>AUTH</Text>
+        <View style={styles.eyebrowRow}>
+          <CelticKnot size={16} color={colors.mint} opacity={0.85} />
+          <Text style={styles.eyebrow}>AUTH</Text>
+        </View>
         <Text style={styles.title}>Create account</Text>
         <Text style={styles.description}>Choose a table identity that follows you from the lobby to the felt, then register it as your active player session.</Text>
         <View style={styles.previewRow}>
@@ -51,7 +58,7 @@ export default function RegistrationScreen() {
 
       <View style={styles.card}>
         <Text style={styles.label}>Username</Text>
-        <TextInput value={username} onChangeText={setUsername} autoCapitalize="words" style={styles.input} placeholder="RiverFox" placeholderTextColor="#6D7EA7" />
+        <TextInput value={username} onChangeText={setUsername} autoCapitalize="words" style={styles.input} placeholder="RiverFox" placeholderTextColor={colors.textFaint} />
         <Text style={styles.hint}>A unique player ID is generated automatically, and you can change your character later from profile.</Text>
 
         <Text style={styles.label}>Password</Text>
@@ -63,7 +70,7 @@ export default function RegistrationScreen() {
           secureTextEntry
           style={styles.input}
           placeholder="At least 8 characters"
-          placeholderTextColor="#6D7EA7"
+          placeholderTextColor={colors.textFaint}
         />
         {passwordTooShort ? <Text style={styles.error}>Password must be at least {MIN_PASSWORD_LENGTH} characters.</Text> : null}
 
@@ -76,7 +83,7 @@ export default function RegistrationScreen() {
           secureTextEntry
           style={styles.input}
           placeholder="Re-enter your password"
-          placeholderTextColor="#6D7EA7"
+          placeholderTextColor={colors.textFaint}
         />
         {passwordsMismatch ? <Text style={styles.error}>Passwords don&apos;t match.</Text> : null}
       </View>
@@ -114,19 +121,20 @@ export default function RegistrationScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#17090D' },
+  screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 22, paddingTop: 38, paddingBottom: 28, gap: 16 },
   heroCard: {
-    backgroundColor: '#2A1118',
+    backgroundColor: colors.surface,
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: '#5E3032',
+    borderColor: colors.border,
     padding: 20,
     gap: 12,
   },
-  eyebrow: { color: '#F1C46E', fontSize: 12, fontWeight: '800', letterSpacing: 2 },
-  title: { color: '#FFF4E7', fontSize: 32, fontWeight: '900' },
-  description: { color: '#D8C4BA', fontSize: 15, lineHeight: 22 },
+  eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  eyebrow: { color: colors.gold, fontSize: fontSize.md, fontWeight: '800', letterSpacing: 2 },
+  title: { color: colors.text, fontSize: fontSize.display + 8, fontWeight: '900', ...displayFont },
+  description: { color: colors.textMuted, fontSize: fontSize.xl, lineHeight: 22 },
   previewRow: { flexDirection: 'row', gap: 14, alignItems: 'center' },
   previewAvatar: {
     width: 72,
@@ -138,24 +146,24 @@ const styles = StyleSheet.create({
   },
   previewEmoji: { fontSize: 34 },
   previewCopy: { flex: 1, gap: 2 },
-  previewName: { color: '#FFF4E7', fontSize: 20, fontWeight: '800' },
-  previewTitle: { color: '#F7D9A2', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
-  previewDescription: { color: '#D8C4BA', fontSize: 13, lineHeight: 19 },
+  previewName: { color: colors.text, fontSize: fontSize.display - 4, fontWeight: '800' },
+  previewTitle: { color: colors.gold, fontSize: fontSize.md, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
+  previewDescription: { color: colors.textMuted, fontSize: fontSize.lg, lineHeight: 19 },
   card: {
-    backgroundColor: '#221017',
+    backgroundColor: colors.surface,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: '#4B2630',
+    borderColor: colors.border,
     padding: 16,
     gap: 12,
   },
-  label: { color: '#FFF4E7', fontSize: 15, fontWeight: '800' },
+  label: { color: colors.text, fontSize: fontSize.xl, fontWeight: '800' },
   input: {
-    backgroundColor: '#12070B',
+    backgroundColor: colors.bg,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#6A4047',
-    color: '#FFF4E7',
+    borderColor: colors.border,
+    color: colors.text,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
@@ -165,27 +173,27 @@ const styles = StyleSheet.create({
     minHeight: 118,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255,244,231,0.18)',
+    borderColor: 'rgba(242,240,234,0.18)',
     padding: 12,
     justifyContent: 'space-between',
   },
   characterEmoji: { fontSize: 28 },
-  characterName: { color: '#FFF8EF', fontSize: 15, fontWeight: '800' },
-  characterTitle: { color: '#F6E7C8', fontSize: 11, lineHeight: 16, fontWeight: '700' },
-  hint: { color: '#BFA8A0', fontSize: 12, lineHeight: 18 },
-  error: { color: '#FFB4B4', fontSize: 12, lineHeight: 18 },
+  characterName: { color: colors.text, fontSize: fontSize.lg, fontWeight: '800' },
+  characterTitle: { color: colors.gold, fontSize: fontSize.base, lineHeight: 16, fontWeight: '700' },
+  hint: { color: colors.textMuted, fontSize: fontSize.base, lineHeight: 18 },
+  error: { color: colors.danger, fontSize: fontSize.base, lineHeight: 18 },
   button: {
-    backgroundColor: '#F1C46E',
+    backgroundColor: colors.gold,
     borderRadius: 16,
     alignItems: 'center',
     paddingVertical: 14,
   },
   buttonDisabled: {
-    backgroundColor: '#F1C46E',
+    backgroundColor: colors.gold,
     borderRadius: 16,
     alignItems: 'center',
     paddingVertical: 14,
     opacity: 0.5,
   },
-  buttonText: { color: '#2A1118', fontSize: 15, fontWeight: '900' },
+  buttonText: { color: colors.ink, fontSize: fontSize.xl, fontWeight: '900' },
 });
