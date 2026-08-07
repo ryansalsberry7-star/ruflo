@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useAuth } from './lib/auth';
-import { getJson } from './lib/api';
+import { useAuth } from '../lib/auth';
+import { getJson } from '../lib/api';
 
 interface HighHandEntry {
   handId: string;

@@ -2,8 +2,8 @@ import { BarlowCondensed_700Bold, BarlowCondensed_900Black, useFonts } from '@ex
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AuthProvider } from './lib/auth';
-import { TablePreferencesProvider } from './lib/tablePreferences';
+import { AuthProvider } from '../lib/auth';
+import { TablePreferencesProvider } from '../lib/tablePreferences';
 
 export default function RootLayout() {
   // Fonts are bundled locally (not fetched), so this resolves in a tick or two -- a

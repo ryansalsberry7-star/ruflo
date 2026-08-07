@@ -7,7 +7,7 @@ import {
   resolvePreAction,
   type TablePlayer,
   type TableState,
-} from '../app/lib/betting';
+} from '../lib/betting';
 
 function seat(overrides: Partial<TablePlayer> = {}): TablePlayer {
   return {

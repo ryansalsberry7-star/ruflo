@@ -1,10 +1,10 @@
 import { Link } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { VerifiedHumanBadge } from './components/VerifiedHumanBadge';
-import { useAuth } from './lib/auth';
-import { getJson } from './lib/api';
-import { getPlayerCharacter } from './lib/playerIdentity';
+import { VerifiedHumanBadge } from '../components/VerifiedHumanBadge';
+import { useAuth } from '../lib/auth';
+import { getJson } from '../lib/api';
+import { getPlayerCharacter } from '../lib/playerIdentity';
 
 interface HighHandEntry {
   playerName: string;

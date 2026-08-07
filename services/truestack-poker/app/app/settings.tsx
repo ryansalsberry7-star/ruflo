@@ -1,5 +1,5 @@
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import { useTablePreferences, type LiveDealerQuality } from './lib/tablePreferences';
+import { useTablePreferences, type LiveDealerQuality } from '../lib/tablePreferences';
 
 export default function SettingsScreen() {
   const { preferences, setPreferences } = useTablePreferences();

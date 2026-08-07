@@ -1,8 +1,8 @@
 import { Link } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
-import { useAuth } from './lib/auth';
-import { getJson } from './lib/api';
+import { useAuth } from '../lib/auth';
+import { getJson } from '../lib/api';
 
 interface HighHandHistoryEntry {
   handId: string;

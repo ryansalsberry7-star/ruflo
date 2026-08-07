@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { getJson } from './lib/api';
+import { getJson } from '../lib/api';
 
 interface TrustCenterResponse {
   trustCenter: {

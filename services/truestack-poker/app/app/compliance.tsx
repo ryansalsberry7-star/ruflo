@@ -1,8 +1,8 @@
 import { Link } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { useAuth } from './lib/auth';
-import { API_BASE_URL } from './lib/api';
+import { useAuth } from '../lib/auth';
+import { API_BASE_URL } from '../lib/api';
 
 type KycStatus = 'unstarted' | 'pending' | 'verified' | 'rejected';
 type DocumentType = 'passport' | 'drivers-license' | 'national-id';

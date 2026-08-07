@@ -1,8 +1,8 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useAuth } from './lib/auth';
-import { deleteJson } from './lib/api';
+import { useAuth } from '../lib/auth';
+import { deleteJson } from '../lib/api';
 
 export default function AccountDeletionScreen() {
   const { user, authToken, logout } = useAuth();
