@@ -62,77 +62,90 @@ interface ChipPileProps {
   columns?: number;
 }
 
-export function ChipPile({ amount, size = 16, showLabel = true, columns = 1 }: ChipPileProps) {
-  if (amount <= 0) return null;
-
+function buildStacks(amount: number, columns: number): Denomination[][] {
   const chips = chipBreakdown(amount);
   const perColumn = Math.ceil(chips.length / columns);
   const stacks: Denomination[][] = [];
   for (let index = 0; index < chips.length; index += perColumn) {
     stacks.push(chips.slice(index, index + perColumn));
   }
+  return stacks;
+}
 
-  // Each chip below the top of a stack shows only its rim -- the thin colored band a
-  // real chip's edge shows when it's sitting under another one -- rather than a full
-  // second disc, which is what turned a tall stack into a flower of overlapping
-  // ellipses instead of a token stack.
+interface ChipStackProps {
+  stack: Denomination[];
+  size: number;
+}
+
+/** One column of a chip pile -- the top chip is a full disc, everything beneath shows
+ *  only its rim (the thin colored band a real stacked chip's edge shows), rather than a
+ *  full second disc, which is what turned a tall stack into a flower of overlapping
+ *  ellipses instead of a token stack. Shared by the static pile and the animated sweep
+ *  below so there is exactly one place that draws a chip stack. */
+function ChipStack({ stack, size }: ChipStackProps) {
   const edgeHeight = Math.max(4, Math.round(size * 0.24));
+  return (
+    <View style={{ width: size, height: size + (stack.length - 1) * edgeHeight, justifyContent: 'flex-end' }}>
+      {stack.map((chip, chipIndex) => {
+        const isTop = chipIndex === stack.length - 1;
+        if (isTop) {
+          return (
+            <View
+              key={chipIndex}
+              style={[
+                styles.chipDisc,
+                {
+                  bottom: chipIndex * edgeHeight,
+                  width: size,
+                  height: size,
+                  borderRadius: size / 2,
+                  borderWidth: Math.max(1.5, size * 0.12),
+                  backgroundColor: chip.body,
+                  borderColor: chip.accent,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.chipDiscCenter,
+                  { width: size * 0.42, height: size * 0.42, borderRadius: (size * 0.42) / 2, backgroundColor: chip.edge },
+                ]}
+              />
+            </View>
+          );
+        }
+        return (
+          <View
+            key={chipIndex}
+            style={[
+              styles.chipEdge,
+              {
+                bottom: chipIndex * edgeHeight,
+                width: size,
+                height: edgeHeight,
+                borderRadius: edgeHeight / 2,
+                backgroundColor: chip.edge,
+              },
+            ]}
+          >
+            <View style={[styles.chipEdgeMark, { backgroundColor: chip.accent }]} />
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+export function ChipPile({ amount, size = 16, showLabel = true, columns = 1 }: ChipPileProps) {
+  if (amount <= 0) return null;
+
+  const stacks = buildStacks(amount, columns);
 
   return (
     <View style={styles.pileRow}>
       <View style={styles.stacksRow}>
         {stacks.map((stack, stackIndex) => (
-          <View
-            key={stackIndex}
-            style={{ width: size, height: size + (stack.length - 1) * edgeHeight, justifyContent: 'flex-end' }}
-          >
-            {stack.map((chip, chipIndex) => {
-              const isTop = chipIndex === stack.length - 1;
-              if (isTop) {
-                return (
-                  <View
-                    key={chipIndex}
-                    style={[
-                      styles.chipDisc,
-                      {
-                        bottom: chipIndex * edgeHeight,
-                        width: size,
-                        height: size,
-                        borderRadius: size / 2,
-                        borderWidth: Math.max(1.5, size * 0.12),
-                        backgroundColor: chip.body,
-                        borderColor: chip.accent,
-                      },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.chipDiscCenter,
-                        { width: size * 0.42, height: size * 0.42, borderRadius: (size * 0.42) / 2, backgroundColor: chip.edge },
-                      ]}
-                    />
-                  </View>
-                );
-              }
-              return (
-                <View
-                  key={chipIndex}
-                  style={[
-                    styles.chipEdge,
-                    {
-                      bottom: chipIndex * edgeHeight,
-                      width: size,
-                      height: edgeHeight,
-                      borderRadius: edgeHeight / 2,
-                      backgroundColor: chip.edge,
-                    },
-                  ]}
-                >
-                  <View style={[styles.chipEdgeMark, { backgroundColor: chip.accent }]} />
-                </View>
-              );
-            })}
-          </View>
+          <ChipStack key={stackIndex} stack={stack} size={size} />
         ))}
       </View>
       {showLabel ? <Text style={[styles.amount, { fontSize: Math.max(9, size * 0.6) }]}>{formatAmount(amount)}</Text> : null}
@@ -173,7 +186,20 @@ interface PotChipsProps {
   showLabel?: boolean;
 }
 
-export function PotChips({ amount, pushTo, pushKey = 0, size = 20, columns = 3, showLabel = false }: PotChipsProps) {
+interface AnimatedChipStackProps {
+  stack: Denomination[];
+  size: number;
+  pushTo?: { x: number; y: number } | null;
+  pushKey: number;
+  /** Stagger so stacks leave in sequence -- a dealer scoops a handful at a time, not
+   *  the whole pot as one rigid block. */
+  delay: number;
+  /** Per-stack horizontal jitter so the sweep scatters into the winner's pile rather
+   *  than every column tracing the identical path on top of each other. */
+  scatter: number;
+}
+
+function AnimatedChipStack({ stack, size, pushTo, pushKey, delay, scatter }: AnimatedChipStackProps) {
   const move = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const fade = useRef(new Animated.Value(1)).current;
   // Drives a small upward bump layered on top of the straight-line sweep below --
@@ -191,24 +217,45 @@ export function PotChips({ amount, pushTo, pushKey = 0, size = 20, columns = 3, 
     move.setValue({ x: 0, y: 0 });
     fade.setValue(1);
     arc.setValue(0);
+    const target = { x: pushTo.x + scatter, y: pushTo.y };
     Animated.parallel([
-      Animated.timing(move, { toValue: pushTo, duration: 620, easing: Easing.out(Easing.quad), useNativeDriver: false }),
-      Animated.timing(arc, { toValue: 1, duration: 620, easing: Easing.out(Easing.quad), useNativeDriver: false }),
-      Animated.timing(fade, { toValue: 0, duration: 620, delay: 160, useNativeDriver: false }),
+      Animated.timing(move, { toValue: target, duration: 560, delay, easing: Easing.out(Easing.quad), useNativeDriver: false }),
+      Animated.timing(arc, { toValue: 1, duration: 560, delay, easing: Easing.out(Easing.quad), useNativeDriver: false }),
+      Animated.timing(fade, { toValue: 0, duration: 420, delay: delay + 260, useNativeDriver: false }),
     ]).start();
-  }, [pushTo, pushKey, move, fade, arc]);
+  }, [pushTo, pushKey, delay, scatter, move, fade, arc]);
 
-  if (amount <= 0) return null;
-
-  const arcLift = arc.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, -16, 0] });
+  const arcLift = arc.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, -16 - Math.min(10, Math.abs(scatter) * 0.4), 0] });
 
   return (
-    <Animated.View
-      pointerEvents="none"
-      style={{ opacity: fade, transform: [{ translateX: move.x }, { translateY: move.y }, { translateY: arcLift }] }}
-    >
-      <ChipPile amount={amount} size={size} columns={columns} showLabel={showLabel} />
+    <Animated.View style={{ opacity: fade, transform: [{ translateX: move.x }, { translateY: move.y }, { translateY: arcLift }] }}>
+      <ChipStack stack={stack} size={size} />
     </Animated.View>
+  );
+}
+
+export function PotChips({ amount, pushTo, pushKey = 0, size = 20, columns = 3, showLabel = false }: PotChipsProps) {
+  if (amount <= 0) return null;
+
+  const stacks = buildStacks(amount, columns);
+
+  return (
+    <View style={styles.pileRow} pointerEvents="none">
+      <View style={styles.stacksRow}>
+        {stacks.map((stack, stackIndex) => (
+          <AnimatedChipStack
+            key={stackIndex}
+            stack={stack}
+            size={size}
+            pushTo={pushTo}
+            pushKey={pushKey}
+            delay={stackIndex * 45}
+            scatter={(stackIndex % 2 === 0 ? 1 : -1) * (4 + (stackIndex % 3) * 3)}
+          />
+        ))}
+      </View>
+      {showLabel ? <Text style={[styles.amount, { fontSize: Math.max(9, size * 0.6) }]}>{formatAmount(amount)}</Text> : null}
+    </View>
   );
 }
 

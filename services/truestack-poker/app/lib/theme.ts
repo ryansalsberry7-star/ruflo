@@ -121,3 +121,28 @@ export const suitColors = {
 } as const;
 
 export type DeckColorMode = keyof typeof suitColors;
+
+/**
+ * Theme Progression: felt looks are real palette swaps, not just a stored preference
+ * nobody reads (customization.tableTheme existed on PlayerProfile long before anything
+ * rendered it). Unlock levels reuse the same thresholds as the Hero Card rarity ladder
+ * (see heroCard.ts) so "Silver rank" and "Mahogany Lounge unlocks" are the same moment,
+ * not two disconnected progression tracks.
+ */
+export interface TableTheme {
+  id: string;
+  label: string;
+  felt: string;
+  feltDark: string;
+  unlockLevel: number;
+}
+
+export const TABLE_THEMES: TableTheme[] = [
+  { id: 'truestack-noir', label: 'Noir', felt: colors.felt, feltDark: colors.feltDark, unlockLevel: 1 },
+  { id: 'mahogany-lounge', label: 'Mahogany Lounge', felt: '#3B211A', feltDark: '#26140F', unlockLevel: 6 },
+  { id: 'monaco-night', label: 'Monaco Night', felt: '#101B3B', feltDark: '#0A1228', unlockLevel: 15 },
+];
+
+export function getTableTheme(id: string | undefined): TableTheme {
+  return TABLE_THEMES.find((entry) => entry.id === id) ?? TABLE_THEMES[0];
+}

@@ -1,21 +1,23 @@
 import { Link } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
+import { Animated, Easing, LayoutAnimation, Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ActionBar } from '../components/ActionBar';
 import { HoleCards } from '../components/HoleCards';
 import { StartingHandMatrix } from '../components/StartingHandMatrix';
 import { BetChips, PotChips } from '../components/Chips';
 import { TimerRing } from '../components/TimerRing';
+import { CelticKnot } from '../components/CelticKnot';
 import { HeroCardDetail } from '../components/HeroCardDetail';
+import { RarityFrame } from '../components/RarityFrame';
 import { DealerStage } from '../components/live-dealer/DealerStage';
 import { useDealerController } from '../components/live-dealer/dealerController';
 import { useAuth } from '../lib/auth';
 import { getJson, postJson, resolveWebSocketBaseUrl } from '../lib/api';
 import { getPlayerCharacter, resolveCharacterId } from '../lib/playerIdentity';
 import { useTablePreferences } from '../lib/tablePreferences';
-import { colors, displayFont, displayFontSemibold, fontSize, numericFont } from '../lib/theme';
+import { colors, displayFont, displayFontSemibold, fontSize, getTableTheme, numericFont } from '../lib/theme';
 import type { DeckColorMode } from '../lib/theme';
 import { formatChips, getLegalActions } from '../lib/betting';
 import type { ActionKind, GameVariant, TablePlayer, TableState } from '../lib/betting';
@@ -30,6 +32,7 @@ interface TableEventEnvelope {
 interface PlayerIdentityProfile {
   customization: {
     playerCharacter: string;
+    tableTheme?: string;
   };
 }
 
@@ -340,6 +343,7 @@ function SeatPod({
           isTilt && seatStyles.tiltPlate,
         ]}
       >
+        <RarityFrame rarity={rarity} radius={10} />
         <View style={seatStyles.avatarWrap}>
           {/* Burns down over the seat's turn -- same footprint as the avatar ring itself
               (no extra layout weight for the other 8 seats that aren't acting), traced
@@ -445,6 +449,21 @@ export default function TableScreen() {
   // Which seat's full Hero Card is open, if any -- one modal instance for all nine
   // seats rather than nine dormant Modal components.
   const [openCardPlayerId, setOpenCardPlayerId] = useState<string | null>(null);
+  // Action History timeline: a short live feed of what just happened this hand, built by
+  // diffing successive table snapshots (there is no discrete per-action event delivered
+  // to the client, only full `table_update` states) against the previous snapshot's
+  // per-player fold/all-in/streetContribution. Checks are the one action type this can't
+  // see -- they leave no state delta to diff against.
+  const [actionLog, setActionLog] = useState<Array<{ id: string; text: string }>>([]);
+  // Study Dock: the pot-odds/SPR panel and Starting Hand Matrix collapse together behind
+  // one header -- expanded by default (matches the pre-existing always-visible layout),
+  // but collapsible so a player who just wants to play the hand can reclaim the scroll
+  // space without leaving the table screen.
+  const [studyDockOpen, setStudyDockOpen] = useState(true);
+  const prevActionSnapshotRef = useRef<{
+    street: string | null;
+    players: Record<string, { folded: boolean; allIn: boolean; streetContribution: number }>;
+  }>({ street: null, players: {} });
   const reconnectTokenRef = useRef<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const manualCloseRef = useRef(false);
@@ -707,6 +726,15 @@ export default function TableScreen() {
   const effectiveStackBBLabel =
     showHandRisk && table!.bigBlind ? `${(effectiveStack! / table!.bigBlind).toFixed(1)} BB` : null;
 
+  // Dynamic Table Analysis: turns the two numbers a player would otherwise have to
+  // compare by hand (the equity a call requires vs. the equity the hand actually has)
+  // into a single read. Pot-limit break-even math, not solved-game advice -- same
+  // register as the Starting Hand Matrix below it.
+  const breakEvenEquityPct =
+    heroLegal.amountToCall > 0
+      ? Math.round((heroLegal.amountToCall / ((table?.pot ?? 0) + heroLegal.amountToCall)) * 100)
+      : null;
+
   const variant: GameVariant = table?.variant === 'plo' ? 'plo' : 'nlh';
   const heroInHand = !!mySeat && !mySeat.folded;
   const activeOpponentCount = table
@@ -764,6 +792,13 @@ export default function TableScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [heroCardsKey, communityCardsKey, activeOpponentCount, heroInHand, variant]);
 
+  const analysisLabel =
+    breakEvenEquityPct !== null && typeof winOdds === 'number'
+      ? winOdds >= breakEvenEquityPct
+        ? `Ahead of the price -- calling needs ${breakEvenEquityPct}% equity, you're an est. ${winOdds}%`
+        : `Behind the price -- calling needs ${breakEvenEquityPct}% equity, you're an est. ${winOdds}%`
+      : null;
+
   // The server zeroes streetContribution the instant a street closes, which otherwise
   // makes every player's bet chips just vanish. Snapshot whatever was live the moment
   // currentStreet actually changes and sweep it into the pot instead -- seat pixel
@@ -791,6 +826,49 @@ export default function TableScreen() {
     };
   }, [table?.currentStreet, table?.players]);
 
+  // Action History timeline -- diffs this snapshot against the last one to describe what
+  // just happened (fold / all-in / bet-or-raise-or-call, plus a street-change marker).
+  useEffect(() => {
+    if (!table) return;
+    const prevSnapshot = prevActionSnapshotRef.current;
+    const entries: string[] = [];
+
+    if (prevSnapshot.street && table.currentStreet && prevSnapshot.street !== table.currentStreet) {
+      entries.push(`— ${table.currentStreet.toUpperCase()} —`);
+    }
+
+    for (const player of table.players) {
+      const prevPlayer = prevSnapshot.players[player.id];
+      if (!prevPlayer) continue;
+      const name = player.id === user?.userId ? 'You' : player.name;
+      if (!prevPlayer.folded && player.folded) {
+        entries.push(`${name} folds`);
+      } else if (!prevPlayer.allIn && player.allIn) {
+        entries.push(`${name} is all-in for ${formatChips(player.streetContribution)}`);
+      } else if (player.streetContribution > prevPlayer.streetContribution) {
+        // Same simplification seatLastAction already uses elsewhere on this screen: a
+        // contribution that matches/exceeds the current bet reads as a raise, anything
+        // smaller reads as a call -- there's no discrete action type in the snapshot to
+        // distinguish an opening bet from a raise, or a check from nothing happening.
+        const verb = player.streetContribution >= table.currentBet && table.currentBet > 0 ? 'raises to' : 'calls';
+        entries.push(`${name} ${verb} ${formatChips(player.streetContribution)}`);
+      }
+    }
+
+    prevActionSnapshotRef.current = {
+      street: table.currentStreet,
+      players: Object.fromEntries(
+        table.players.map((player) => [player.id, { folded: player.folded, allIn: player.allIn, streetContribution: player.streetContribution }])
+      ),
+    };
+
+    if (entries.length > 0) {
+      setActionLog((log) =>
+        [...log, ...entries.map((text) => ({ id: `${Date.now()}-${Math.random()}`, text }))].slice(-4)
+      );
+    }
+  }, [table, user?.userId]);
+
   if (authLoading) {
     return (
       <View style={styles.centered}>
@@ -814,6 +892,10 @@ export default function TableScreen() {
 
   const tableWidth = Math.min(windowWidth - 20, 600);
   const tableHeight = Math.round(tableWidth * 0.72);
+  // Theme Progression: the felt actually renders whichever table theme is saved on the
+  // hero's profile (unlocked by account level in the Store) instead of the palette's
+  // hardcoded felt color -- see lib/theme.ts's getTableTheme/TABLE_THEMES.
+  const tableTheme = getTableTheme(playerProfiles[user?.userId ?? '']?.customization.tableTheme);
   // Nine pods ring the felt. The tightest gap between adjacent seat slots (the left/right
   // side pairs) is ~70px on a typical phone width, so pods need to stay well under that —
   // the previous /4.8 divisor produced up to 80px pods that overlapped their neighbors.
@@ -861,7 +943,10 @@ export default function TableScreen() {
       <ScrollView style={styles.screen} contentContainerStyle={[styles.content, { paddingTop: insets.top + 12 }]}>
       <View style={styles.headerRow}>
         <View style={styles.headerMain}>
-          <Text style={styles.title}>Eirinn Poker Tables</Text>
+          <View style={styles.titleRow}>
+            <CelticKnot size={20} color={colors.mint} opacity={0.8} />
+            <Text style={styles.title}>Eirinn Poker Tables</Text>
+          </View>
           <Text style={styles.headerStakes}>
             {table?.variant === 'plo' ? 'PLO' : 'NLH'} • $0.05/$0.10 • Play-money beta
           </Text>
@@ -891,12 +976,21 @@ export default function TableScreen() {
 
       <View style={styles.roomStage}>
         <View style={styles.roomVignette} pointerEvents="none" />
+        {actionLog.length > 0 ? (
+          <View style={styles.actionLog} pointerEvents="none">
+            {actionLog.map((entry, index) => (
+              <Text key={entry.id} style={[styles.actionLogText, index === actionLog.length - 1 && styles.actionLogTextLatest]}>
+                {entry.text}
+              </Text>
+            ))}
+          </View>
+        ) : null}
 
         <View style={styles.feltWrap}>
           <View
             style={[
               feltStyles.felt,
-              { width: tableWidth, height: tableHeight, borderRadius: tableHeight / 2 },
+              { width: tableWidth, height: tableHeight, borderRadius: tableHeight / 2, backgroundColor: tableTheme.felt },
             ]}
           >
             <View pointerEvents="none" style={[feltStyles.feltPinstripe, { borderRadius: tableHeight / 2 }]} />
@@ -1078,47 +1172,69 @@ export default function TableScreen() {
         </View>
       ) : null}
 
-      {/* Only numbers a player would actually use mid-hand — everything here used to
-          duplicate what's already on the felt (street, pot, seat count) or was static
-          filler (fake tabs that didn't do anything, dealer-quality settings trivia). */}
-      <View style={styles.statsPanel}>
-        <View style={styles.statsRow}>
-          <View style={styles.statTile}>
-            <Text style={styles.statLabel}>In hand</Text>
-            <Text style={styles.statValue}>{playersInHand}/{totalSeated}</Text>
-          </View>
-          {heroStackBB !== null ? (
-            <View style={styles.statTile}>
-              <Text style={styles.statLabel}>Your stack</Text>
-              <Text style={styles.statValue}>{heroStackBB.toFixed(1)} BB</Text>
-            </View>
-          ) : null}
-          {potOddsLabel ? (
-            <View style={[styles.statTile, styles.statTileHighlight]}>
-              <Text style={styles.statLabel}>Pot odds</Text>
-              <Text style={styles.statValue}>{potOddsLabel}</Text>
-            </View>
-          ) : null}
-        </View>
-        {/* SPR and effective stack describe the hand's overall risk from the first
-            action -- a second row rather than crowding them into the row above, which
-            is either always-on trivia (seat count) or only relevant at a decision
-            (pot odds). */}
-        {sprLabel && effectiveStackBBLabel ? (
-          <View style={[styles.statsRow, styles.statsRowSecondary]}>
-            <View style={styles.statTile}>
-              <Text style={styles.statLabel}>SPR</Text>
-              <Text style={styles.statValue}>{sprLabel}</Text>
-            </View>
-            <View style={styles.statTile}>
-              <Text style={styles.statLabel}>Eff. stack</Text>
-              <Text style={styles.statValue}>{effectiveStackBBLabel}</Text>
-            </View>
-          </View>
-        ) : null}
-      </View>
+      <Pressable
+        style={styles.studyDockHeader}
+        onPress={() => {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          setStudyDockOpen((open) => !open);
+        }}
+      >
+        <Text style={styles.studyDockTitle}>STUDY DOCK</Text>
+        <Text style={styles.studyDockChevron}>{studyDockOpen ? '−' : '+'}</Text>
+      </Pressable>
 
-      <StartingHandMatrix variant={table?.variant ?? 'nlh'} defaultExpanded />
+      {studyDockOpen ? (
+        <>
+          {/* Only numbers a player would actually use mid-hand — everything here used to
+              duplicate what's already on the felt (street, pot, seat count) or was static
+              filler (fake tabs that didn't do anything, dealer-quality settings trivia). */}
+          <View style={styles.statsPanel}>
+            <View style={styles.statsRow}>
+              <View style={styles.statTile}>
+                <Text style={styles.statLabel}>In hand</Text>
+                <Text style={styles.statValue}>{playersInHand}/{totalSeated}</Text>
+              </View>
+              {heroStackBB !== null ? (
+                <View style={styles.statTile}>
+                  <Text style={styles.statLabel}>Your stack</Text>
+                  <Text style={styles.statValue}>{heroStackBB.toFixed(1)} BB</Text>
+                </View>
+              ) : null}
+              {potOddsLabel ? (
+                <View style={[styles.statTile, styles.statTileHighlight]}>
+                  <Text style={styles.statLabel}>Pot odds</Text>
+                  <Text style={styles.statValue}>{potOddsLabel}</Text>
+                </View>
+              ) : null}
+            </View>
+            {/* SPR and effective stack describe the hand's overall risk from the first
+                action -- a second row rather than crowding them into the row above, which
+                is either always-on trivia (seat count) or only relevant at a decision
+                (pot odds). */}
+            {sprLabel && effectiveStackBBLabel ? (
+              <View style={[styles.statsRow, styles.statsRowSecondary]}>
+                <View style={styles.statTile}>
+                  <Text style={styles.statLabel}>SPR</Text>
+                  <Text style={styles.statValue}>{sprLabel}</Text>
+                </View>
+                <View style={styles.statTile}>
+                  <Text style={styles.statLabel}>Eff. stack</Text>
+                  <Text style={styles.statValue}>{effectiveStackBBLabel}</Text>
+                </View>
+              </View>
+            ) : null}
+            {/* Dynamic Table Analysis: the one-line read that turns pot odds + win odds into an
+                actual decision cue, rather than leaving the player to compare two numbers. */}
+            {analysisLabel ? (
+              <Text style={[styles.analysisLabel, winOdds! >= breakEvenEquityPct! ? styles.analysisLabelGood : styles.analysisLabelBad]}>
+                {analysisLabel}
+              </Text>
+            ) : null}
+          </View>
+
+          <StartingHandMatrix variant={table?.variant ?? 'nlh'} defaultExpanded />
+        </>
+      ) : null}
       </ScrollView>
 
       {/* Pinned outside the ScrollView: a 20s turn timer leaves no room to scroll for Fold. */}
@@ -1170,6 +1286,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   gearText: { color: colors.gold, fontSize: 17 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   title: { color: colors.text, fontSize: fontSize.display, fontWeight: '900', ...displayFont },
   consoleShelf: {
     marginHorizontal: 8,
@@ -1190,6 +1307,25 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     overflow: 'hidden',
     backgroundColor: colors.bg,
+  },
+  // Action History timeline -- pinned to the top corner of the room stage rather than
+  // taking its own row, since this screen has fought (and re-fought) crowding bugs from
+  // every extra always-visible block.
+  actionLog: {
+    position: 'absolute',
+    top: 6,
+    left: 10,
+    zIndex: 5,
+    gap: 1,
+  },
+  actionLogText: {
+    color: colors.textFaint,
+    fontSize: fontSize.xs,
+    fontWeight: '700',
+  },
+  actionLogTextLatest: {
+    color: colors.text,
+    fontWeight: '800',
   },
   // Soft dark radial-ish glow above the felt, standing in for pit lighting without a
   // real gradient dependency (layered flat views, low-opacity center to dark edge).
@@ -1270,6 +1406,35 @@ const styles = StyleSheet.create({
   statTileHighlight: {
     borderColor: colors.gold,
     backgroundColor: 'rgba(203,178,126,0.12)',
+  },
+  analysisLabel: {
+    fontSize: fontSize.base,
+    fontWeight: '800',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  analysisLabelGood: { color: colors.positive },
+  analysisLabelBad: { color: colors.fold },
+  studyDockHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginHorizontal: 8,
+    marginTop: 14,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderSubtle,
+  },
+  studyDockTitle: {
+    color: colors.textMuted,
+    fontSize: fontSize.sm,
+    fontWeight: '900',
+    letterSpacing: 1.4,
+  },
+  studyDockChevron: {
+    color: colors.textMuted,
+    fontSize: fontSize.xxl,
+    fontWeight: '900',
   },
   statLabel: {
     color: colors.textMuted,

@@ -2,9 +2,13 @@ import { Link } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { VerifiedHumanBadge } from '../components/VerifiedHumanBadge';
+import { CelticKnot } from '../components/CelticKnot';
+import { RarityFrame } from '../components/RarityFrame';
 import { useAuth } from '../lib/auth';
 import { getJson, postJson } from '../lib/api';
+import { rarityForLevel } from '../lib/heroCard';
 import { PLAYER_CHARACTERS, getPlayerCharacter, type PlayerCharacterId } from '../lib/playerIdentity';
+import { TABLE_THEMES } from '../lib/theme';
 
 interface PlayerProfile {
   userId: string;
@@ -27,6 +31,12 @@ interface PlayerProfile {
   }>;
 }
 
+const RARITY_COLOR: Record<Achievement['rarity'], string> = {
+  common: '#B9C2CC',
+  rare: '#7FE3FF',
+  legendary: '#F1C46E',
+};
+
 interface TrustSnapshot {
   verifiedHuman: boolean;
   trustScore: number;
@@ -37,6 +47,9 @@ interface TrustSnapshot {
 interface Achievement {
   id: string;
   title: string;
+  description: string;
+  rarity: 'common' | 'rare' | 'legendary';
+  kind?: 'achievement' | 'relic';
 }
 
 export default function ProfileScreen() {
@@ -110,6 +123,12 @@ export default function ProfileScreen() {
   }
 
   const activeCharacter = getPlayerCharacter(profile.customization.playerCharacter);
+  // Same rarity ladder the table's Hero Cards climb, applied to this account's lifetime
+  // level (a much slower climb than a single session -- see heroCard.ts) rather than a
+  // second, disconnected rarity scale.
+  const accountRarity = rarityForLevel(profile.level);
+  const relics = achievements.filter((entry) => entry.kind === 'relic');
+  const regularAchievements = achievements.filter((entry) => entry.kind !== 'relic');
 
   async function handleCharacterSelect(characterId: PlayerCharacterId): Promise<void> {
     const currentProfile = profile;
@@ -132,19 +151,42 @@ export default function ProfileScreen() {
     }
   }
 
+  async function handleThemeSelect(themeId: string, unlockLevel: number): Promise<void> {
+    const currentProfile = profile;
+    if (!user || !authToken || !currentProfile || currentProfile.customization.tableTheme === themeId) return;
+    if (currentProfile.level < unlockLevel) return;
+
+    try {
+      const response = await postJson<{ profile: PlayerProfile }>(
+        `/api/profiles/${user.userId}/customization`,
+        { tableTheme: themeId },
+        { headers: { authorization: `Bearer ${authToken}` } }
+      );
+      setProfile(response.profile);
+      setSaveState('Table theme updated -- it now renders at your seat.');
+    } catch (saveError) {
+      setSaveState(saveError instanceof Error ? saveError.message : 'Failed to update table theme.');
+    }
+  }
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.heroCard}>
-        <Text style={styles.eyebrow}>PLAYER PROFILE</Text>
+        <View style={styles.eyebrowRow}>
+          <CelticKnot size={16} color={accountRarity.color} opacity={0.8} />
+          <Text style={styles.eyebrow}>PLAYER PROFILE</Text>
+        </View>
         <Text style={styles.title}>{profile.username}</Text>
         <Text style={styles.subtitle}>Your player card now carries a chosen character identity and trust status directly onto the table.</Text>
         <View style={styles.heroRow}>
-          <View style={[styles.characterAvatar, { backgroundColor: activeCharacter.aura, borderColor: activeCharacter.accent }]}>
+          <View style={[styles.characterAvatar, { backgroundColor: activeCharacter.aura, borderColor: accountRarity.color }]}>
+            <RarityFrame rarity={accountRarity} radius={42} />
             <Text style={styles.characterEmoji}>{activeCharacter.emoji}</Text>
           </View>
           <View style={styles.heroCopy}>
             <Text style={styles.characterName}>{activeCharacter.name}</Text>
             <Text style={styles.characterTitle}>{activeCharacter.title}</Text>
+            <Text style={[styles.rarityLabel, { color: accountRarity.color }]}>{accountRarity.label.toUpperCase()} RANK</Text>
             <Text style={styles.characterDescription}>{activeCharacter.description}</Text>
             {trust.verifiedHuman ? <VerifiedHumanBadge /> : <Text style={styles.pendingBadge}>Shield unlocks after human verification.</Text>}
           </View>
@@ -175,7 +217,8 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Choose your character</Text>
+        <Text style={styles.cardTitle}>Hero Collection</Text>
+        <Text style={styles.collectionSubtitle}>Every identity is free to equip -- pick who takes your seat.</Text>
         <View style={styles.characterGrid}>
           {PLAYER_CHARACTERS.map((character) => {
             const selected = character.id === profile.customization.playerCharacter;
@@ -186,10 +229,11 @@ export default function ProfileScreen() {
                 onPress={() => void handleCharacterSelect(character.id)}
                 style={[
                   styles.characterOption,
-                  { backgroundColor: character.aura },
-                  selected && { borderColor: character.glow, shadowColor: character.accent, shadowOpacity: 0.45, shadowRadius: 14 },
+                  { backgroundColor: character.aura, borderColor: selected ? accountRarity.color : 'rgba(255,244,231,0.18)' },
+                  selected && { shadowColor: accountRarity.glow, shadowOpacity: 0.45, shadowRadius: 14 },
                 ]}
               >
+                {selected ? <RarityFrame rarity={accountRarity} radius={18} /> : null}
                 <View style={styles.characterOptionTop}>
                   <Text style={styles.optionEmoji}>{character.emoji}</Text>
                   {selected && trust.verifiedHuman ? <VerifiedHumanBadge compact /> : null}
@@ -197,11 +241,38 @@ export default function ProfileScreen() {
                 <Text style={styles.optionName}>{character.name}</Text>
                 <Text style={styles.optionTitle}>{character.title}</Text>
                 <Text style={styles.optionDescription}>{character.description}</Text>
+                {selected ? <Text style={[styles.equippedTag, { color: accountRarity.color }]}>EQUIPPED</Text> : null}
               </Pressable>
             );
           })}
         </View>
         {saveState ? <Text style={styles.saveState}>{saveState}</Text> : null}
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Table Themes</Text>
+        <Text style={styles.collectionSubtitle}>Unlocks as your account level climbs -- cosmetic only, never gameplay.</Text>
+        <View style={styles.themeRow}>
+          {TABLE_THEMES.map((theme) => {
+            const unlocked = profile.level >= theme.unlockLevel;
+            const selected = profile.customization.tableTheme === theme.id;
+            return (
+              <Pressable
+                key={theme.id}
+                disabled={!unlocked}
+                onPress={() => void handleThemeSelect(theme.id, theme.unlockLevel)}
+                style={[
+                  styles.themeSwatch,
+                  { backgroundColor: theme.felt, borderColor: selected ? accountRarity.color : 'rgba(255,244,231,0.18)' },
+                  !unlocked && styles.themeSwatchLocked,
+                ]}
+              >
+                <Text style={styles.themeLabel}>{theme.label}</Text>
+                <Text style={styles.themeSubLabel}>{unlocked ? (selected ? 'Equipped' : 'Unlocked') : `Level ${theme.unlockLevel}`}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
       <View style={styles.card}>
@@ -225,13 +296,28 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.card}>
+        <Text style={styles.cardTitle}>Relics</Text>
+        <Text style={styles.collectionSubtitle}>Trophy-shelf milestones -- streaks, endurance, and clean play.</Text>
+        {relics.map((item) => (
+          <View key={item.id} style={styles.relicRow}>
+            <Text style={[styles.relicRarity, { color: RARITY_COLOR[item.rarity] }]}>{item.rarity.toUpperCase()}</Text>
+            <View style={styles.relicCopy}>
+              <Text style={styles.relicTitle}>{item.title}</Text>
+              <Text style={styles.relicDescription}>{item.description}</Text>
+            </View>
+          </View>
+        ))}
+        {relics.length === 0 ? <Text style={styles.rowText}>• Keep playing to earn your first relic.</Text> : null}
+      </View>
+
+      <View style={styles.card}>
         <Text style={styles.cardTitle}>Achievements</Text>
-        {achievements.map((item) => (
+        {regularAchievements.map((item) => (
           <Text key={item.id} style={styles.rowText}>
             • {item.title}
           </Text>
         ))}
-        {achievements.length === 0 ? <Text style={styles.rowText}>• Play tracked sessions to unlock achievements.</Text> : null}
+        {regularAchievements.length === 0 ? <Text style={styles.rowText}>• Play tracked sessions to unlock achievements.</Text> : null}
       </View>
 
       <View style={styles.card}>
@@ -280,6 +366,7 @@ const styles = StyleSheet.create({
     padding: 18,
     gap: 10,
   },
+  eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   eyebrow: { color: '#F1C46E', letterSpacing: 1.8, fontSize: 11, fontWeight: '800' },
   title: { color: '#FFF4E7', fontSize: 32, fontWeight: '900' },
   subtitle: { color: '#D6C0B7', lineHeight: 20 },
@@ -345,7 +432,20 @@ const styles = StyleSheet.create({
   optionName: { color: '#FFF8EF', fontSize: 15, fontWeight: '800' },
   optionTitle: { color: '#F6E7C8', fontSize: 11, fontWeight: '800', lineHeight: 16 },
   optionDescription: { color: '#FFF1E2', fontSize: 11, lineHeight: 16 },
+  equippedTag: { fontSize: 10, fontWeight: '900', letterSpacing: 1, marginTop: 2 },
   saveState: { color: '#F1C46E', fontSize: 12, lineHeight: 18 },
+  rarityLabel: { fontSize: 11, fontWeight: '900', letterSpacing: 1.4, marginTop: 1 },
+  collectionSubtitle: { color: '#B99E8D', fontSize: 12, lineHeight: 17, marginTop: -4 },
+  relicRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+  relicRarity: { fontSize: 10, fontWeight: '900', letterSpacing: 1, width: 64 },
+  relicCopy: { flex: 1, gap: 1 },
+  relicTitle: { color: '#FFF4E7', fontSize: 14, fontWeight: '800' },
+  relicDescription: { color: '#C7ACA0', fontSize: 12, lineHeight: 17 },
+  themeRow: { flexDirection: 'row', gap: 10 },
+  themeSwatch: { flex: 1, minHeight: 64, borderRadius: 14, borderWidth: 1.5, padding: 10, justifyContent: 'flex-end' },
+  themeSwatchLocked: { opacity: 0.4 },
+  themeLabel: { color: '#FFF4E7', fontSize: 12, fontWeight: '800' },
+  themeSubLabel: { color: '#E4D3C3', fontSize: 10, fontWeight: '700', marginTop: 1 },
   linkText: { color: '#F0DED0', fontSize: 14, fontWeight: '700', paddingVertical: 8 },
   dangerLinkText: { color: '#E48A8A', fontSize: 14, fontWeight: '700', paddingVertical: 8 },
   tag: {

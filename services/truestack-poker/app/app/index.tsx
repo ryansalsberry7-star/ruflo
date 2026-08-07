@@ -22,7 +22,7 @@ interface QuickLink {
 const QUICK_LINKS: QuickLink[] = [
   { href: '/fair-play', label: 'Fair play center', caption: 'Verify any settled hand' },
   { href: '/compliance', label: 'Real-money account', caption: 'Verification & funding' },
-  { href: '/premium', label: 'High Hand Club', caption: 'Daily & all-time rewards' },
+  { href: '/premium', label: 'Emerald Hand Club', caption: 'Daily & all-time rewards' },
 ];
 
 export default function HomeScreen() {

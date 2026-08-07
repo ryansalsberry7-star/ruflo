@@ -106,7 +106,8 @@ function runtimeStoragePath(persist: boolean | undefined, filename: string): str
 export function buildDefaultServices(options: BuildServicesOptions = {}): PlatformServices {
   const highHands = new HighHandService({ storagePath: runtimeStoragePath(options.persist, 'high-hands.json') });
   const wallet = new WalletService({ storagePath: runtimeStoragePath(options.persist, 'wallets.json') });
-  const poker = new PokerService(highHands, wallet, { autoProgress: true });
+  const community = new CommunityService();
+  const poker = new PokerService(highHands, wallet, { autoProgress: true }, community);
   const payment = new PaymentService();
   const realMoneyEnabled = process.env.TRUESTACK_REALMONEY_ENABLED === 'true';
   const authorizedJurisdictions = (process.env.TRUESTACK_AUTHORIZED_JURISDICTIONS ?? '')
@@ -124,7 +125,6 @@ export function buildDefaultServices(options: BuildServicesOptions = {}): Platfo
   const analytics = new AnalyticsService();
   const sessions = new SessionService();
   const trust = new TrustService({ storagePath: runtimeStoragePath(options.persist, 'trust.json') });
-  const community = new CommunityService();
   const coach = new CoachService();
 
   const seedPasswordHash = hashPassword(SEED_USER_PASSWORD);

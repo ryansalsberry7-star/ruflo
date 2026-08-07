@@ -25,12 +25,15 @@
       "Bash(pkill -f \"tsx watch src/server.ts\")",
       "Bash(TRUESTACK_DEV_BOTS=true npm run dev)",
       "Bash(curl -s http://127.0.0.1:4040/api/hud-stats/bot-nova)",
-      "Bash(curl -s http://127.0.0.1:4040/api/profiles/bot-nova)"
+      "Bash(curl -s http://127.0.0.1:4040/api/profiles/bot-nova)",
+      "Bash(curl -s -o /dev/null -w \"metro: %{http_code}\\\\n\" --max-time 5 \"http://localhost:8081/status\")",
+      "Bash(pkill -f \"expo start\" 2>/dev/null *)"
     ],
     "additionalDirectories": [
       "/Users/ryansalsberry/ruflo/services/truestack-poker/src/services",
       "/Users/ryansalsberry/ruflo/services/truestack-poker/src",
-      "/Users/ryansalsberry/ruflo/services/truestack-poker/tests"
+      "/Users/ryansalsberry/ruflo/services/truestack-poker/tests",
+      "/private/tmp"
     ]
   }
 }

@@ -19,6 +19,7 @@ import {
 import type { GameVariant, StakeLevel, TournamentListing, ZeroRakePolicy } from '../contracts.js';
 import { GAME_VARIANT_LABELS, HOLE_CARD_COUNT, STAKE_LEVELS, TOURNAMENT_LISTINGS, ZERO_RAKE_POLICY } from '../contracts.js';
 import { DealerService, type DealerHandState, type HandVerificationRecord } from './dealer-service.js';
+import type { CommunityService } from './community-service.js';
 import type { GameHostProvider } from './game-host-provider.js';
 import { HighHandService } from './high-hand-service.js';
 import { PlayerStatsService, type PlayerHudStats, type PlayerProgress } from './player-stats-service.js';
@@ -82,7 +83,8 @@ export class PokerService extends EventEmitter implements GameHostProvider {
   constructor(
     private readonly highHands?: HighHandService,
     private readonly wallet?: WalletService,
-    private readonly options: PokerServiceOptions = {}
+    private readonly options: PokerServiceOptions = {},
+    private readonly community?: CommunityService
   ) {
     super();
   }
@@ -419,7 +421,12 @@ export class PokerService extends EventEmitter implements GameHostProvider {
     // seat kept paying blinds, draining every stack toward zero over a session. The wallet
     // moves only on buy-in and cash-out (see cashOutPlayer).
     this.creditPayoutsToStacks(tableId, payouts);
-    this.playerStats.recordHandResult(Object.keys(hand.holeCardsByPlayer), winners);
+    const participantIds = Object.keys(hand.holeCardsByPlayer);
+    this.playerStats.recordHandResult(participantIds, winners);
+    const winnerSet = new Set(winners);
+    for (const playerId of participantIds) {
+      this.community?.recordHandCompleted(playerId, winnerSet.has(playerId));
+    }
 
     this.resetTableForNextHand(tableId);
     this.startDealerHandForTable(tableId);

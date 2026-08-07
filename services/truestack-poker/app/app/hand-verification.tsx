@@ -84,7 +84,7 @@ export default function HandVerificationScreen() {
   if (authLoading || loading) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.loadingText}>Loading high hand highlight...</Text>
+        <Text style={styles.loadingText}>Loading Emerald Hand highlight...</Text>
       </View>
     );
   }
@@ -92,7 +92,7 @@ export default function HandVerificationScreen() {
   if (!user) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.errorText}>Sign in to view your High Hand Club highlights.</Text>
+        <Text style={styles.errorText}>Sign in to view your Emerald Hand Club highlights.</Text>
       </View>
     );
   }
@@ -107,7 +107,7 @@ export default function HandVerificationScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.eyebrow}>HIGH HAND HIGHLIGHT</Text>
+      <Text style={styles.eyebrow}>EMERALD HAND HIGHLIGHT</Text>
       <Text style={styles.title}>{highlight?.handName ?? 'No qualifying hand yet'}</Text>
       <Text style={styles.subtitle}>Shareable highlight cards keep rare-hand moments visible without touching poker pots.</Text>
 
@@ -136,10 +136,10 @@ export default function HandVerificationScreen() {
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>High Hand History</Text>
+            <Text style={styles.sectionTitle}>Emerald Hand History</Text>
             {history.map((entry) => (
               <Text key={entry.handId} style={styles.timelineRow}>
-                • {entry.handName} • {entry.tableId} • {entry.points} pts • {entry.rewards.achievementTitles[0] ?? 'High Hand Club'}
+                • {entry.handName} • {entry.tableId} • {entry.points} pts • {entry.rewards.achievementTitles[0] ?? 'Emerald Hand Club'}
               </Text>
             ))}
           </View>
@@ -150,7 +150,7 @@ export default function HandVerificationScreen() {
         </>
       ) : (
         <View style={styles.card}>
-          <Text style={styles.value}>No qualifying high hand yet. Track Full House or better to enter the High Hand Club.</Text>
+          <Text style={styles.value}>No qualifying high hand yet. Track Full House or better to enter the Emerald Hand Club.</Text>
         </View>
       )}
 

@@ -2,6 +2,8 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { PlayerCharacter } from '../lib/playerIdentity';
 import type { RarityInfo, HeroCardStats } from '../lib/heroCard';
 import { colors, displayFont, fontSize, numericFont } from '../lib/theme';
+import { OpponentRadar } from './OpponentRadar';
+import { RarityFrame } from './RarityFrame';
 
 interface HeroCardDetailProps {
   visible: boolean;
@@ -31,6 +33,7 @@ export function HeroCardDetail({ visible, onClose, character, displayName, rarit
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={[styles.card, { borderColor: rarity.color, shadowColor: rarity.glow }]} onPress={() => {}}>
+          <RarityFrame rarity={rarity} radius={20} />
           <Text style={[styles.rarityEyebrow, { color: rarity.color }]}>{rarity.label.toUpperCase()} RANK</Text>
 
           <View style={[styles.illustration, { backgroundColor: character.aura, borderColor: rarity.color }]}>
@@ -41,6 +44,10 @@ export function HeroCardDetail({ visible, onClose, character, displayName, rarit
           <Text style={styles.title}>{character.title}</Text>
           {isBot ? <Text style={styles.botNote}>Simulated opponent</Text> : null}
           <Text style={styles.description}>{character.description}</Text>
+
+          <View style={styles.radarWrap}>
+            <OpponentRadar stats={stats} color={rarity.color} size={132} />
+          </View>
 
           <View style={styles.statBlock}>
             {STAT_ROWS.map((row) => {
@@ -109,6 +116,7 @@ const styles = StyleSheet.create({
   title: { color: colors.textMuted, fontSize: fontSize.lg, fontWeight: '700', marginTop: -2 },
   botNote: { color: colors.textFaint, fontSize: fontSize.xs, fontWeight: '800', letterSpacing: 1, marginTop: 4, textTransform: 'uppercase' },
   description: { color: colors.textMuted, fontSize: fontSize.base, textAlign: 'center', lineHeight: 18, marginTop: 8, marginBottom: 6 },
+  radarWrap: { alignItems: 'center', marginTop: 4 },
   statBlock: { width: '100%', gap: 8, marginTop: 8 },
   statRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   statSuit: { color: colors.textFaint, fontSize: fontSize.base, width: 14 },

@@ -74,7 +74,7 @@ export default function PremiumScreen() {
   if (authLoading || loading) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.loadingText}>Loading premium high-hand club...</Text>
+        <Text style={styles.loadingText}>Loading premium Emerald Hand Club...</Text>
       </View>
     );
   }
@@ -82,7 +82,7 @@ export default function PremiumScreen() {
   if (!user) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.errorText}>Sign in to load your High Hand Club benefits.</Text>
+        <Text style={styles.errorText}>Sign in to load your Emerald Hand Club benefits.</Text>
       </View>
     );
   }
@@ -99,17 +99,17 @@ export default function PremiumScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.eyebrow}>HIGH HAND CLUB</Text>
+      <Text style={styles.eyebrow}>EMERALD HAND CLUB</Text>
       <Text style={styles.title}>Premium membership</Text>
       <Text style={styles.subtitle}>Exclusive high-hand challenges, leaderboard prestige, and zero-rake reward perks that never touch poker pots.</Text>
 
       <View style={styles.heroCard}>
-        <Text style={styles.heroTitle}>{premium.proMember ? 'Pro High Hand Member' : 'Standard Member'}</Text>
+        <Text style={styles.heroTitle}>{premium.proMember ? 'Pro Emerald Hand Member' : 'Standard Member'}</Text>
         <Text style={styles.heroText}>History tracking: {premium.historyTracking ? 'Enabled' : 'Disabled'}</Text>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Daily High Hand Challenges</Text>
+        <Text style={styles.cardTitle}>Daily Emerald Hand Challenges</Text>
         {premium.dailyChallenges.map((challenge) => (
           <Text key={challenge} style={styles.row}>• {challenge}</Text>
         ))}

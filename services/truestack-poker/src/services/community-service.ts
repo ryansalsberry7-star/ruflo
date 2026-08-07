@@ -30,6 +30,13 @@ export interface PlayerAchievement {
   description: string;
   unlockedAt: string;
   rarity: 'common' | 'rare' | 'legendary';
+  /** Relics are the trophy-shelf subset of achievements -- milestone moments (streaks,
+   *  endurance, clean play) rather than "did the thing once" progress markers. Reusing
+   *  PlayerAchievement rather than a parallel model, since this service and
+   *  HighHandService.buildRewards already issue two independent badge/achievement
+   *  vocabularies -- a third data shape would make that worse, not better. Defaults to
+   *  'achievement' for every pre-existing milestone. */
+  kind?: 'achievement' | 'relic';
 }
 
 export interface TournamentHistoryEntry {
@@ -232,6 +239,33 @@ export class CommunityService {
     return next;
   }
 
+  /** Call once per settled hand, for every player who was dealt in. Unlike
+   *  recordSessionSummary (an explicit session-end event nothing in this app currently
+   *  triggers), this fires from real hand settlement, so the persistent profile's
+   *  level/badges/achievements actually move during play instead of staying frozen at
+   *  their ensureProfile() defaults forever. Deliberately lighter than
+   *  recordSessionSummary -- it has no session-scoped fields (duration, biggestPot) to
+   *  report, so it leaves sessionsCompleted/totalProfit untouched. */
+  recordHandCompleted(userId: string, won: boolean): PlayerProfile {
+    const profile = this.ensureProfile(userId);
+    const updatedHands = profile.handsPlayed + 1;
+    const updatedWinStreak = won ? profile.winStreak + 1 : 0;
+    const updatedLevel = Math.max(1, Math.floor(updatedHands / 150) + 1);
+
+    let next: PlayerProfile = {
+      ...profile,
+      handsPlayed: updatedHands,
+      winStreak: updatedWinStreak,
+      bestWinStreak: Math.max(profile.bestWinStreak, updatedWinStreak),
+      level: updatedLevel,
+      badges: this.computeBadges(updatedLevel, profile.sportsmanshipScore),
+    };
+
+    next = this.applyAchievementMilestones(next);
+    this.profiles.set(userId, next);
+    return next;
+  }
+
   listAchievements(userId: string): PlayerAchievement[] {
     return this.ensureProfile(userId).achievements;
   }
@@ -397,12 +431,54 @@ export class CommunityService {
       });
     }
 
+    // Relics: the trophy-shelf subset, gated on the bigger/rarer milestones rather than
+    // "did the thing once" progress markers above.
+    if (next.bestWinStreak >= 3) {
+      next = this.ensureAchievement(next, {
+        id: 'relic-hot-hand',
+        title: 'Hot Hand',
+        description: 'Strung together a 3-hand win streak.',
+        rarity: 'common',
+        kind: 'relic',
+      });
+    }
+
+    if (next.bestWinStreak >= 10) {
+      next = this.ensureAchievement(next, {
+        id: 'relic-unstoppable',
+        title: 'Unstoppable',
+        description: 'Ran a 10-hand win streak without a single loss.',
+        rarity: 'legendary',
+        kind: 'relic',
+      });
+    }
+
+    if (next.handsPlayed >= 5000) {
+      next = this.ensureAchievement(next, {
+        id: 'relic-iron-grinder',
+        title: 'Iron Grinder',
+        description: 'Played 5,000 hands and kept coming back.',
+        rarity: 'rare',
+        kind: 'relic',
+      });
+    }
+
+    if (next.sportsmanshipScore >= 98) {
+      next = this.ensureAchievement(next, {
+        id: 'relic-clean-record',
+        title: 'Clean Record',
+        description: 'Kept a near-spotless sportsmanship score.',
+        rarity: 'rare',
+        kind: 'relic',
+      });
+    }
+
     return next;
   }
 
   private ensureAchievement(
     profile: PlayerProfile,
-    definition: { id: string; title: string; description: string; rarity: PlayerAchievement['rarity'] }
+    definition: { id: string; title: string; description: string; rarity: PlayerAchievement['rarity']; kind?: PlayerAchievement['kind'] }
   ): PlayerProfile {
     if (profile.achievements.some((entry) => entry.id === definition.id)) return profile;
 
